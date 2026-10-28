@@ -1,0 +1,1486 @@
+You are the Lead Software Architect, Backend Developer, Frontend Developer, Database Architect, QA Engineer, Security Engineer, and Deployment Engineer for this project.
+
+Build a complete, production-ready University Student Attendance Management and Analytics System as a web application.
+
+The system must be designed as a real university-level platform, not a classroom/demo project.
+
+IMPORTANT:
+Design the complete architecture first. Do NOT develop the project through small architectural redesigns or randomly change the architecture during development.
+
+The complete system architecture, database structure, academic structure, authentication, attendance engine, QR system, face recognition system, admin panel, teacher panel, student panel, routine system, analytics, notification system, reports, testing, security, and deployment strategy must be designed together from the beginning.
+
+Then implement the system according to that architecture.
+
+==================================================
+1. MAIN OBJECTIVE
+==================================================
+
+Build a university attendance management platform that supports:
+
+- Admin management
+- Teacher management
+- Student management
+- Department management
+- Academic year and semester management
+- Batch/cohort management
+- Semester-specific course management
+- Student course registration
+- Teacher-course assignment
+- Routine/timetable management
+- Automatic teacher class reminders
+- Attendance sessions
+- Dynamic QR attendance
+- Face recognition attendance
+- Present/Late/Absent calculation
+- Three-late attendance penalty
+- Effective attendance calculation
+- 60% exam eligibility
+- Attendance risk analysis
+- Automatic warning emails
+- Student dashboard
+- Teacher dashboard
+- Admin dashboard
+- Attendance analytics
+- Reports
+- Audit logs
+- Production deployment
+- Future extensibility
+
+==================================================
+2. UNIVERSITY ACADEMIC STRUCTURE
+==================================================
+
+The university has:
+
+1st Year
+2nd Year
+3rd Year
+4th Year
+
+Each year has:
+
+1st Semester
+2nd Semester
+
+Therefore the system must support:
+
+1st Year 1st Semester
+1st Year 2nd Semester
+2nd Year 1st Semester
+2nd Year 2nd Semester
+3rd Year 1st Semester
+3rd Year 2nd Semester
+4th Year 1st Semester
+4th Year 2nd Semester
+
+IMPORTANT:
+
+Multiple year levels run simultaneously.
+
+For example, during the same academic period:
+
+- 1st Year students may be in 1st Semester
+- 2nd Year students may be in 1st Semester
+- 3rd Year students may be in 1st Semester
+- 4th Year students may be in 1st Semester
+
+The architecture must support these simultaneously without mixing their courses, students, teachers, or attendance records.
+
+==================================================
+3. DEPARTMENT / BATCH / ACADEMIC SESSION
+==================================================
+
+The system must support:
+
+- Departments
+- Academic sessions/years
+- Year level
+- Semester
+- Batch/cohort
+- Student section if required
+- Courses
+- Course offerings
+
+A course should NOT simply be permanently linked directly to one teacher or one student.
+
+Use a proper concept such as:
+
+Course
+Course Offering
+Teacher Assignment
+Student Enrollment
+
+A Course Offering should identify the actual course being conducted for a specific:
+
+- Department
+- Academic session
+- Year
+- Semester
+- Batch
+- Section if applicable
+
+This is important because the same course may exist in different semesters, batches, or academic sessions.
+
+==================================================
+4. ADMIN PANEL
+==================================================
+
+There must be a powerful Admin Panel.
+
+Admin is the highest-level system manager.
+
+Admin can:
+
+- Create/manage departments
+- Create/manage academic sessions
+- Create/manage years
+- Create/manage semesters
+- Create/manage batches
+- Create/manage students
+- Create/manage teachers
+- Create/manage courses
+- Create semester-wise course structures
+- Assign courses to specific year/semester/batch
+- Assign teachers to courses
+- Manage student course registration
+- Manage routines
+- Manage attendance sessions
+- Monitor attendance
+- View failed QR verification
+- View failed face verification
+- Manage face profiles
+- View risk students
+- View warning alerts
+- Manage email logs
+- Generate reports
+- Correct attendance when necessary
+- Review attendance corrections
+- Manage system settings
+- Manage attendance rules
+- View system activity/audit logs
+
+Admin must be able to identify and resolve system/attendance-related problems.
+
+Any manual correction by Admin must be recorded in an audit log.
+
+Example:
+
+Student:
+ABC
+
+Original:
+ABSENT
+
+Changed to:
+PRESENT
+
+Changed by:
+Admin
+
+Reason:
+Technical issue
+
+Date/time:
+Stored automatically
+
+==================================================
+5. STUDENT MANAGEMENT
+==================================================
+
+Each student must have:
+
+- Unique student ID
+- Name
+- Email
+- Department
+- Academic session
+- Year
+- Semester
+- Batch
+- Section if applicable
+- Account status
+- Registered courses
+- Face profile if face attendance is enabled
+
+A student belongs to a specific academic structure.
+
+==================================================
+6. COURSE MANAGEMENT
+==================================================
+
+Admin creates courses.
+
+Each course may contain:
+
+- Course code
+- Course name
+- Credit
+- Course type
+- Theory/Lab
+- Department
+- Year
+- Semester
+- Status
+
+The system must support separate courses for each semester.
+
+Example:
+
+1st Year 1st Semester:
+
+- C Programming
+- Mathematics
+- Physics
+- C Programming Lab
+
+1st Year 2nd Semester:
+
+- Data Structure
+- Digital Logic
+- etc.
+
+The exact courses must be configurable by Admin.
+
+==================================================
+7. COURSE OFFERING
+==================================================
+
+Use a Course Offering layer.
+
+A Course Offering represents the actual course being conducted for:
+
+- Academic session
+- Department
+- Year
+- Semester
+- Batch
+- Section
+- Course
+- Course type
+
+Students and teachers should interact with Course Offerings rather than directly with a generic Course.
+
+This prevents mixing students, teachers, semesters, and batches.
+
+==================================================
+8. STUDENT COURSE REGISTRATION
+==================================================
+
+Students must be registered/enrolled in courses for their current semester.
+
+If a student registers for three courses:
+
+Example:
+
+Student:
+1st Year 1st Semester
+
+Registered:
+
+1. C Programming
+2. Mathematics
+3. Physics
+
+Then the Student Dashboard must show only those three courses.
+
+The student must NOT see unrelated courses from other semesters.
+
+Admin must be able to manage registrations.
+
+The system must prevent invalid registration into courses that do not belong to the student's current academic structure unless Admin explicitly overrides it.
+
+==================================================
+9. TEACHER MANAGEMENT
+==================================================
+
+Admin creates and manages teachers.
+
+Teacher information may include:
+
+- Teacher ID
+- Name
+- Email
+- Department
+- Designation
+- Account status
+- Authorized courses
+- Assigned courses
+
+==================================================
+10. TEACHER COURSE ELIGIBILITY AND ASSIGNMENT
+==================================================
+
+Admin must control which courses a teacher can teach.
+
+First, Admin can define which courses a teacher is authorized/eligible to teach.
+
+For example:
+
+Teacher A may be authorized for:
+
+1st Year 1st Semester:
+- C Programming
+
+1st Year 2nd Semester:
+- Data Structure
+
+2nd Year 1st Semester:
+- Database
+
+Then Admin assigns the teacher to a specific Course Offering.
+
+IMPORTANT TEACHER ASSIGNMENT RULE:
+
+A teacher can teach:
+
+- Maximum ONE regular/theory course in a specific semester + batch.
+
+A teacher must NOT be assigned two regular courses in the same semester/batch.
+
+Example:
+
+1st Year 1st Semester, Batch A:
+
+Teacher A → C Programming = ALLOWED
+
+Teacher A → Mathematics = NOT ALLOWED
+
+However, if a laboratory course exists, the teacher may additionally be assigned the relevant lab according to university rules.
+
+Example:
+
+Teacher A:
+- C Programming = allowed
+- C Programming Lab = allowed
+
+The system must enforce these constraints automatically.
+
+Teacher must not be able to add arbitrary courses themselves.
+
+Teacher Dashboard should display only the courses assigned to them by Admin.
+
+==================================================
+11. ROUTINE / TIMETABLE
+==================================================
+
+The system must have a complete Routine/Timetable module.
+
+Admin can create a routine containing:
+
+- Course Offering
+- Teacher
+- Day
+- Start time
+- End time
+- Room
+- Building if needed
+- Batch
+- Section
+- Semester
+- Academic session
+
+Example:
+
+Course:
+Database
+
+Year:
+2nd Year
+
+Semester:
+1st Semester
+
+Teacher:
+XYZ
+
+Day:
+Sunday
+
+Time:
+10:00 AM - 11:00 AM
+
+Room:
+301
+
+The routine must be linked to the actual Course Offering and teacher.
+
+==================================================
+12. AUTOMATIC TEACHER CLASS REMINDER
+==================================================
+
+The system must monitor the routine.
+
+When a teacher has a scheduled class, the system should automatically send an email notification.
+
+Example:
+
+Class:
+Database
+
+Time:
+10:00 AM
+
+Teacher receives:
+
+"Your Database class is scheduled at 10:00 AM today. You can now start the attendance session."
+
+The reminder system should be configurable.
+
+Possible notification timing:
+
+- At class time
+- 15 minutes before
+- 30 minutes before
+
+The timing must be configurable.
+
+The system must avoid duplicate reminder emails.
+
+Maintain notification/email logs.
+
+==================================================
+13. ATTENDANCE METHODS
+==================================================
+
+The system must support TWO independent attendance verification methods:
+
+METHOD 1:
+Dynamic QR Attendance
+
+METHOD 2:
+Face Recognition Attendance
+
+IMPORTANT:
+
+QR and Face Recognition are NOT both mandatory.
+
+For a class/session, Admin/Teacher can configure which attendance method is used:
+
+- QR
+OR
+- FACE
+
+Do NOT force:
+
+QR + Face
+
+in the current version.
+
+However, architecture should allow future implementation of:
+
+QR + Face
+QR + Face + Liveness
+
+without a complete rewrite.
+
+==================================================
+14. DYNAMIC QR ATTENDANCE
+==================================================
+
+The QR system must use dynamic session-based QR codes.
+
+Teacher starts an attendance session.
+
+System generates a dynamic QR code containing a secure attendance-session reference/token.
+
+Student scans the QR.
+
+System validates:
+
+- Valid session
+- Correct course
+- Correct student enrollment
+- Session status
+- Token validity
+- Duplicate attendance
+- Expiration if configured
+
+The QR should not expose sensitive database information directly.
+
+The QR architecture should support:
+
+- Short-lived tokens
+- Expiring QR
+- One-time token
+- Login-bound QR
+- Device validation
+- Location validation
+
+These may be implemented progressively, but the current architecture must support them.
+
+Do NOT claim that QR attendance is completely cheat-proof.
+
+==================================================
+15. FACE RECOGNITION ATTENDANCE
+==================================================
+
+Face Recognition is an independent attendance method.
+
+Student face information must be registered before using face attendance.
+
+Admin can:
+
+- Register a student's face
+- Update face data
+- Disable face profile
+- Re-register face
+- View verification status
+- Review failed verification attempts
+
+The system should maintain a Face Profile associated with the student.
+
+The face architecture should support storing a secure face representation/embedding rather than relying only on raw images.
+
+Face profile should support:
+
+- Student ID
+- Face embedding/representation
+- Recognition model version
+- Status
+- Created timestamp
+- Updated timestamp
+
+When Face Attendance is selected:
+
+1. Student starts attendance process.
+2. System captures face.
+3. System compares it with the student's registered face profile.
+4. If matched:
+   - Attendance is accepted.
+5. If not matched:
+   - Attendance is NOT accepted.
+
+IMPORTANT:
+
+A failed face match should NOT immediately be recorded as "ABSENT".
+
+Absence should be finalized after the attendance session/class according to attendance rules.
+
+This prevents a temporary verification failure from incorrectly marking a student absent.
+
+Maintain face verification logs including:
+
+- Student
+- Session
+- Verification result
+- Timestamp
+- Failure reason if applicable
+
+==================================================
+16. ATTENDANCE SESSION
+==================================================
+
+Teacher can start an attendance session for a specific scheduled class.
+
+Each attendance session must belong to:
+
+- Course Offering
+- Teacher
+- Class
+- Routine entry
+- Date
+- Start time
+- End time
+- Attendance method
+
+Session status may include:
+
+- Scheduled
+- Active
+- Closed
+- Cancelled
+
+Attendance must be linked to the specific session.
+
+==================================================
+17. NORMAL ATTENDANCE RULE
+==================================================
+
+Official class start time:
+
+Example:
+10:00 AM
+
+Default late threshold:
+
+20 minutes
+
+Therefore:
+
+Before 10:20 AM:
+PRESENT
+
+At or after 10:20 AM:
+LATE
+
+The 20-minute threshold MUST NOT be hard-coded in multiple places.
+
+Store it in configurable system/course settings.
+
+==================================================
+18. ABSENT RULE
+==================================================
+
+A student is considered absent when the attendance session/class is finalized and the student has no valid attendance record.
+
+Valid attendance can come from:
+
+- Successful QR verification
+OR
+- Successful face verification
+
+depending on the attendance method configured for that session.
+
+Do not mark a student absent merely because a QR or face verification attempt failed temporarily.
+
+==================================================
+19. THREE-LATE PENALTY
+==================================================
+
+If a student receives three consecutive LATE attendance records for the same course:
+
+3 LATE = 1 ATTENDANCE PENALTY
+
+Do NOT delete or alter the original attendance records.
+
+Maintain separately:
+
+- Actual attendance status
+- Late count
+- Consecutive late count
+- Penalty count
+- Effective attendance
+
+Example:
+
+Late
+Late
+Late
+
+→ One penalty
+
+The original three Late records remain in the database for auditability.
+
+Penalty calculation must be centralized in one business-logic service.
+
+==================================================
+20. ATTENDANCE PERCENTAGE
+==================================================
+
+Use one centralized attendance calculation engine.
+
+Formula:
+
+Attendance Percentage =
+Effective Present Classes / Total Conducted Classes × 100
+
+The calculation must consistently handle:
+
+- Present
+- Late
+- Absent
+- Penalty
+
+No page or route should implement its own attendance percentage formula.
+
+==================================================
+21. EXAM ELIGIBILITY
+==================================================
+
+Required attendance:
+
+60%
+
+Rule:
+
+Attendance >= 60%
+→ Exam Eligible
+
+Attendance < 60%
+→ Exam Not Eligible / At Risk
+
+Exactly 60% MUST be considered eligible.
+
+The 60% rule must exist in one centralized service.
+
+==================================================
+22. PLANNED AND CONDUCTED CLASSES
+==================================================
+
+Each Course Offering must have:
+
+- Planned classes
+- Conducted classes
+- Remaining classes
+
+Do NOT confuse planned classes with conducted classes.
+
+Example:
+
+Planned:
+35
+
+Conducted:
+24
+
+Remaining:
+11
+
+==================================================
+23. MAXIMUM POSSIBLE ATTENDANCE
+==================================================
+
+The system must calculate whether the student can still reach 60%.
+
+Example:
+
+Planned classes = 35
+Conducted = 24
+Effective Present = 13
+Remaining = 11
+
+If the student attends every remaining class:
+
+Maximum possible present:
+13 + 11 = 24
+
+Maximum possible attendance:
+24 / 35 × 100 = 68.57%
+
+The system must calculate:
+
+- Current attendance
+- Remaining classes
+- Required future attendance
+- Maximum possible attendance
+- Recoverability
+
+If even perfect attendance in all remaining classes cannot reach 60%, mark the student as:
+
+CRITICAL / NOT RECOVERABLE
+
+==================================================
+24. RISK ANALYSIS
+==================================================
+
+Risk levels:
+
+- SAFE
+- WARNING
+- HIGH_RISK
+- CRITICAL
+
+Risk calculation must consider:
+
+- Current attendance
+- 60% requirement
+- Planned classes
+- Conducted classes
+- Remaining classes
+- Required future attendance
+- Maximum possible attendance
+- Course progress
+
+Do NOT randomly hard-code arbitrary thresholds.
+
+Risk rules should be configurable and documented.
+
+All risk calculations must exist in one centralized analytics/risk service.
+
+==================================================
+25. AUTOMATIC WARNING EMAIL
+==================================================
+
+When a student enters an attendance-risk condition, automatically send a warning email.
+
+Email should contain:
+
+- Course
+- Current attendance
+- Required attendance
+- Classes conducted
+- Remaining classes
+- Minimum future classes required
+- Maximum possible attendance
+- Risk status
+- Exam eligibility implication
+
+Do NOT repeatedly send the same warning email for the same risk event.
+
+Maintain an EmailLog table.
+
+==================================================
+26. ADMIN DASHBOARD
+==================================================
+
+Admin Dashboard should show:
+
+- Total students
+- Total teachers
+- Total departments
+- Total courses
+- Total course offerings
+- Active classes
+- Today's classes
+- Present count
+- Late count
+- Absent count
+- Average attendance
+- At-risk students
+- Critical students
+- Course progress
+- Teacher workload
+- Attendance method usage
+- QR verification failures
+- Face verification failures
+- System alerts
+- Email status
+- Recent activity
+- Audit logs
+
+Admin must be able to drill down into individual students, teachers, courses, batches, semesters, and sessions.
+
+==================================================
+27. TEACHER DASHBOARD
+==================================================
+
+Teacher Dashboard should show:
+
+- Assigned courses
+- Today's classes
+- Upcoming classes
+- Routine
+- Start attendance
+- Active attendance session
+- Live attendance
+- Attendance history
+- Present students
+- Late students
+- Absent students
+- At-risk students
+- Course attendance analytics
+- Course progress
+- Reports
+
+Teacher must only access authorized courses/classes.
+
+==================================================
+28. STUDENT DASHBOARD
+==================================================
+
+Student Dashboard should show:
+
+- Student information
+- Current year
+- Current semester
+- Batch
+- Registered courses
+
+For each registered course:
+
+- Present
+- Late
+- Absent
+- Penalty
+- Effective attendance
+- Attendance percentage
+- Risk level
+- Required future attendance
+- Maximum possible attendance
+- Exam eligibility
+- Attendance history
+- Attendance trend
+- Warning notifications
+
+Only the student's currently registered courses should appear as active courses.
+
+==================================================
+29. ANALYTICS
+==================================================
+
+Analytics must provide:
+
+- Overall attendance
+- Course-wise attendance
+- Student-wise attendance
+- Monthly attendance trend
+- Late attendance analysis
+- Attendance distribution
+- Course comparison
+- Planned vs conducted classes
+- Required future attendance
+- Maximum possible attendance
+- Risk distribution
+- Teacher/course statistics
+- Batch statistics
+- Semester statistics
+
+Use appropriate charts and visualizations.
+
+==================================================
+30. REPORTS
+==================================================
+
+System should support:
+
+- Student attendance report
+- Course attendance report
+- Monthly attendance report
+- At-risk student report
+- Critical student report
+- Exam eligibility report
+- Teacher report
+- Course progress report
+- Batch report
+- Semester report
+
+Support CSV/PDF export where appropriate.
+
+==================================================
+31. DATABASE ARCHITECTURE
+==================================================
+
+Use a normalized relational database.
+
+Development:
+SQLite
+
+Production:
+PostgreSQL preferred
+
+Database abstraction must allow migration without rewriting the business logic.
+
+Major entities may include:
+
+- Users
+- Roles
+- Departments
+- AcademicSessions
+- Years
+- Semesters
+- Batches
+- Students
+- Teachers
+- Courses
+- CourseOfferings
+- TeacherCourseEligibility
+- TeacherAssignments
+- StudentEnrollments
+- Routines
+- Classes
+- AttendanceSessions
+- Attendance
+- LateRecords
+- AttendancePenalties
+- FaceProfiles
+- FaceVerificationLogs
+- QRSessionTokens
+- RiskAlerts
+- EmailLogs
+- Notifications
+- AuditLogs
+- SystemSettings
+
+Add other entities if architecturally necessary.
+
+Every table must have:
+
+- Primary key
+- Foreign keys
+- Proper data types
+- Constraints
+- Relationships
+- Useful indexes
+- Created/updated timestamps where appropriate
+
+==================================================
+32. IMPORTANT DATABASE RELATIONSHIP RULE
+==================================================
+
+Avoid unnecessary duplication.
+
+Do NOT directly duplicate:
+
+Student → Course → Teacher
+
+Instead use proper relationships such as:
+
+Student
+↓
+Enrollment
+↓
+Course Offering
+↓
+Course
+
+Teacher
+↓
+Teacher Assignment
+↓
+Course Offering
+
+Routine
+↓
+Course Offering + Teacher
+
+Attendance Session
+↓
+Course Offering
+
+Attendance
+↓
+Attendance Session + Student
+
+This ensures correct academic separation.
+
+==================================================
+33. AUTHENTICATION
+==================================================
+
+Implement secure authentication.
+
+Roles:
+
+- ADMIN
+- TEACHER
+- STUDENT
+
+Use:
+
+- Secure password hashing
+- Session-based authentication
+- Role-based authorization
+- Secure cookies
+- Session expiration
+- Server-side validation
+- CSRF protection
+- Login/logout
+- Password reset architecture if appropriate
+
+Users must only access authorized resources.
+
+==================================================
+34. SECURITY
+==================================================
+
+Implement:
+
+- Password hashing
+- CSRF protection
+- SQL injection protection
+- ORM/database parameterization
+- Input validation
+- Server-side authorization
+- Secure sessions
+- Secure cookies
+- Rate limiting where appropriate
+- Secure QR tokens
+- Token expiration
+- Duplicate attendance prevention
+- Audit logging
+- Environment variables for secrets
+- HTTPS in production
+
+Never store:
+
+- Passwords
+- API keys
+- SMTP credentials
+- Secret keys
+
+directly in source code.
+
+==================================================
+35. FACE RECOGNITION SECURITY
+==================================================
+
+Face recognition must be treated as a sensitive security component.
+
+Use appropriate protection for:
+
+- Face embeddings
+- Face images if stored
+- Verification logs
+- Access control
+
+Do not expose face data publicly.
+
+Only authorized Admin/system processes should manage face profiles.
+
+Design the face recognition module so that the recognition model can be replaced or upgraded later without redesigning the entire application.
+
+==================================================
+36. QR SECURITY
+==================================================
+
+Version 1 should use dynamic QR.
+
+The architecture must allow future upgrades:
+
+Version 1:
+Dynamic QR
+
+Version 2:
+Short-lived QR token
+
+Version 3:
+One-time QR token
+
+Version 4:
+Login-bound QR
+
+Version 5:
+Location validation
+
+Version 6:
+Device validation
+
+Version 7:
+QR + Face
+
+Version 8:
+QR + Face + Liveness
+
+Do not require QR + Face in the current implementation.
+
+==================================================
+37. AUDIT LOGGING
+==================================================
+
+Important system actions must be logged.
+
+Examples:
+
+- Admin changes attendance
+- Teacher starts session
+- Teacher closes session
+- Student attendance recorded
+- Face verification failed
+- QR verification failed
+- Course assignment changed
+- Teacher assignment changed
+- Student registration changed
+- Routine changed
+- Risk status changed
+- Email sent
+
+Audit logs should include:
+
+- User
+- Action
+- Entity
+- Entity ID
+- Previous value where appropriate
+- New value where appropriate
+- Reason where applicable
+- Timestamp
+
+==================================================
+38. PROJECT ARCHITECTURE
+==================================================
+
+Use a clean modular architecture.
+
+Recommended structure:
+
+app/
+    __init__.py
+    config.py
+
+    models/
+    routes/
+    services/
+    analytics/
+    auth/
+    qr/
+    face/
+    email/
+    notifications/
+    reports/
+    utils/
+
+    templates/
+        admin/
+        teacher/
+        student/
+        auth/
+
+    static/
+        css/
+        js/
+        images/
+
+    instance/
+
+tests/
+
+migrations/
+
+requirements.txt
+.env.example
+run.py
+
+You may improve this structure if there is a strong architectural reason.
+
+Do NOT put the entire application in one Python file.
+
+==================================================
+39. SEPARATION OF RESPONSIBILITIES
+==================================================
+
+Keep separate:
+
+Authentication
+Database models
+Routes/controllers
+Business logic
+Attendance calculation
+Late calculation
+Penalty calculation
+Eligibility calculation
+Risk analysis
+QR generation/validation
+Face recognition
+Email service
+Notification service
+Analytics
+Reports
+Audit logging
+
+Do not duplicate business logic inside routes or templates.
+
+==================================================
+40. UI/UX
+==================================================
+
+The system should have a professional university-level UI.
+
+Requirements:
+
+- Responsive design
+- Clean dashboard
+- Sidebar/navigation
+- Tables
+- Search
+- Filtering
+- Pagination
+- Charts
+- Status badges
+- Attendance indicators
+- Risk indicators
+- Modal/forms where useful
+- Mobile-friendly student attendance flow
+
+The interface should be understandable for non-technical university users.
+
+==================================================
+41. TECHNOLOGY
+==================================================
+
+Backend:
+Python + Flask
+
+Database:
+SQLite for development
+PostgreSQL for production
+
+ORM:
+SQLAlchemy
+
+Frontend:
+HTML
+CSS
+JavaScript
+
+Analytics:
+Pandas + suitable charting library
+
+QR:
+Reliable Python QR library
+
+Face Recognition:
+Use a maintainable Python-compatible face recognition/embedding solution.
+
+Email:
+SMTP or production-compatible email service
+
+Authentication:
+Secure password hashing + session-based authentication
+
+Production:
+Gunicorn
+Nginx
+HTTPS
+Environment variables
+
+==================================================
+42. TESTING
+==================================================
+
+Create automated tests for critical business rules.
+
+Test:
+
+- Authentication
+- Role authorization
+- Student enrollment
+- Teacher assignment restrictions
+- Semester/course separation
+- Duplicate course registration
+- Duplicate teacher assignment
+- Routine creation
+- 20-minute late threshold
+- Present calculation
+- Late calculation
+- Absent calculation
+- Three consecutive late penalty
+- Attendance percentage
+- 60% eligibility
+- Maximum possible attendance
+- Required future attendance
+- Risk calculation
+- Duplicate attendance prevention
+- Dynamic QR validation
+- QR expiration
+- Face verification success
+- Face verification failure
+- Email duplicate prevention
+- Attendance correction
+- Audit log creation
+
+Use realistic test cases.
+
+==================================================
+43. DEPLOYMENT
+==================================================
+
+The final application must be deployable as a real website.
+
+Development:
+Local machine
+
+Production:
+Cloud/VPS/server
+
+Production requirements:
+
+- PostgreSQL
+- Gunicorn
+- Nginx
+- HTTPS/SSL
+- Secure environment variables
+- Production secret key
+- Production email configuration
+- Database backups
+- Logging
+- Error monitoring
+- Static file handling
+- Proper server configuration
+- Domain configuration
+
+Do not expose secrets.
+
+Provide exact deployment instructions.
+
+==================================================
+44. DEVELOPMENT APPROACH
+==================================================
+
+IMPORTANT:
+
+Do NOT repeatedly redesign the architecture during development.
+
+FIRST:
+
+Complete the entire system architecture and database design.
+
+Then:
+
+Implement the system according to the finalized architecture.
+
+Implementation should follow logical modules, but the architecture itself must already be decided.
+
+Before implementing a major module, briefly explain:
+
+1. Its purpose
+2. Its place in the existing architecture
+3. Required database components
+4. How it connects to existing modules
+5. How it affects future modules
+
+Then implement it.
+
+Do not silently change established business rules.
+
+If an architectural change becomes necessary:
+
+- Explain the problem
+- Explain the proposed change
+- Explain its impact
+- Then apply the change consistently across the system
+
+==================================================
+45. CODE QUALITY
+==================================================
+
+The developer may be an intermediate/beginner Python learner.
+
+Therefore:
+
+- Keep code readable
+- Use meaningful names
+- Avoid unnecessary complexity
+- Use useful comments
+- Explain important code
+- Keep modules organized
+- Provide exact installation commands
+- Provide exact run commands
+- Clearly state where each file belongs
+- When modifying important files, provide the complete updated file when practical
+
+==================================================
+46. FINAL SYSTEM REQUIREMENT
+==================================================
+
+The final application must feel like a real university software platform.
+
+It must have:
+
+- Clean UI
+- Reliable database
+- Correct academic structure
+- Admin control
+- Teacher management
+- Student management
+- Course registration
+- Teacher-course assignment
+- Routine management
+- Automatic teacher reminders
+- Dynamic QR attendance
+- Face recognition attendance
+- Independent QR/Face attendance modes
+- Correct Present/Late/Absent calculation
+- Three-late penalty
+- 60% eligibility
+- Risk analytics
+- Automatic warning emails
+- Dashboards
+- Reports
+- Audit logs
+- Security
+- Automated tests
+- Production deployment
+- Future extensibility
+
+MOST IMPORTANT:
+
+DESIGN FIRST.
+BUILD SECOND.
+
+Do not sacrifice architecture for speed.
+
+Do not create isolated features.
+
+Every feature must integrate with the academic structure, database, attendance engine, authentication, analytics, and future architecture.
+
+The final system must be maintainable, scalable, secure, testable, and deployable as a real university attendance platform.

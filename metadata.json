@@ -1,0 +1,10 @@
+{
+  "name": "UniAttend - University Attendance & Analytics",
+  "description": "Production-grade university student attendance management, routine scheduling, dynamic QR & face recognition attendance, risk analytics, and exam eligibility platform.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
