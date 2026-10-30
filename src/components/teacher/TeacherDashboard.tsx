@@ -160,8 +160,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     onRefresh();
   };
 
-  const handleTriggerTodayReminders = () => {
-    const res = NotificationService.triggerTeacherClassReminders();
+  const handleTriggerTodayReminders = async () => {
+    const res = await NotificationService.triggerTeacherClassReminders();
     setReminderStatus(
       res.sentCount > 0
         ? `Reminders successfully sent (${res.sentCount} notifications logged)`

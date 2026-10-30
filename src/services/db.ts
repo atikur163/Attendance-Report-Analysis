@@ -280,7 +280,7 @@ class DatabaseService {
     return INITIAL_STATE;
   }
 
-  private saveLocalBackup(): void {
+  public saveLocalBackup(): void {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
     } catch {
@@ -662,6 +662,21 @@ class DatabaseService {
     });
 
     return newOffering;
+  }
+
+  public updateCourseOffering(offeringId: string, updates: Partial<CourseOffering>): CourseOffering | null {
+    const idx = this.state.courseOfferings.findIndex(o => o.id === offeringId);
+    if (idx === -1) return null;
+
+    this.state.courseOfferings[idx] = { ...this.state.courseOfferings[idx], ...updates };
+    const updated = this.state.courseOfferings[idx];
+    this.saveLocalBackup();
+
+    this.safeSetDoc(doc(firestoreDb, 'course_offerings', offeringId), updated).catch(err => {
+      handleFirestoreError(err, OperationType.UPDATE, `course_offerings/${offeringId}`);
+    });
+
+    return updated;
   }
 
   // ==================== TEACHERS & ASSIGNMENTS ====================

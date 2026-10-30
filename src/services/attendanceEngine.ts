@@ -192,6 +192,7 @@ export function computeStudentCourseAnalytics(params: {
     examEligible,
     maximumPossibleAttendance,
     requiredFutureAttendance,
+    consecutiveClassesToReach60: requiredFutureAttendance,
     isRecoverable,
     riskLevel,
   };
