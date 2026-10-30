@@ -29,6 +29,12 @@ import {
   AttendanceStatus,
 } from '../../types';
 import { getStatusBadgeClasses, formatTimeAgo } from '../../utils/formatters';
+import { AdminTeacherManagement } from './AdminTeacherManagement';
+import { AdminStudentManagement } from './AdminStudentManagement';
+import { AdminEnrollmentManagement } from './AdminEnrollmentManagement';
+import { AdminCourseManagement } from './AdminCourseManagement';
+import { AdminRoutineManagement } from './AdminRoutineManagement';
+import { AdminEmailAndRiskManagement } from './AdminEmailAndRiskManagement';
 
 interface AdminDashboardProps {
   onRefresh: () => void;
@@ -36,7 +42,7 @@ interface AdminDashboardProps {
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => {
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'structure' | 'courses' | 'teachers' | 'students' | 'routine' | 'corrections' | 'settings' | 'audit'
+    'overview' | 'structure' | 'courses' | 'teachers' | 'students' | 'enrollments' | 'routine' | 'risk_emails' | 'corrections' | 'settings' | 'audit'
   >('overview');
 
   const departments = db.getDepartments();
@@ -172,11 +178,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
           { id: 'overview', label: 'Overview & Metrics', icon: Layers },
           { id: 'structure', label: 'Academic Structure', icon: Layers },
           { id: 'courses', label: 'Courses & Offerings', icon: BookOpen },
-          { id: 'teachers', label: 'Teacher Assignment & Rule 10', icon: UserCheck },
-          { id: 'students', label: 'Students & Enrollment', icon: GraduationCap },
+          { id: 'teachers', label: 'Faculty Management', icon: UserCheck },
+          { id: 'students', label: 'Student Directory', icon: GraduationCap },
+          { id: 'enrollments', label: 'Course Enrollments', icon: BookOpen },
           { id: 'routine', label: 'Routines & Timetable', icon: Calendar },
+          { id: 'risk_emails', label: 'Warnings & Email Logs', icon: Mail },
           { id: 'corrections', label: 'Corrections & Audit', icon: FileCheck2 },
-          { id: 'settings', label: 'System Rules & Logs', icon: Settings },
+          { id: 'settings', label: 'System Rules & Database', icon: Settings },
         ].map(tab => {
           const Icon = tab.icon;
           return (
@@ -354,264 +362,66 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
 
       {/* TAB 3: COURSES & COURSE OFFERINGS */}
       {activeTab === 'courses' && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/70">
-              <div>
-                <h3 className="font-bold text-slate-900 text-sm">Course Catalog</h3>
-                <p className="text-xs text-slate-500">
-                  Definitions of semester-specific theory and lab courses
-                </p>
-              </div>
-              <span className="text-xs text-slate-400 font-mono">Total: {courses.length} courses</span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-500 border-b border-slate-200 font-semibold">
-                  <tr>
-                    <th className="py-3 px-4">Course Code</th>
-                    <th className="py-3 px-4">Course Name</th>
-                    <th className="py-3 px-4">Type</th>
-                    <th className="py-3 px-4">Credit</th>
-                    <th className="py-3 px-4">Year & Semester</th>
-                    <th className="py-3 px-4">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {courses.map(c => (
-                    <tr key={c.id} className="hover:bg-slate-50">
-                      <td className="py-3 px-4 font-extrabold text-indigo-700 font-mono">{c.code}</td>
-                      <td className="py-3 px-4 font-semibold text-slate-900">{c.name}</td>
-                      <td className="py-3 px-4">
-                        <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            c.type === 'THEORY'
-                              ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                              : 'bg-purple-50 text-purple-700 border border-purple-200'
-                          }`}
-                        >
-                          {c.type}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 font-mono font-bold">{c.credit}</td>
-                      <td className="py-3 px-4 text-slate-600">
-                        Year {c.year}, Sem {c.semester}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          {c.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+        <AdminCourseManagement
+          courses={courses}
+          offerings={offerings}
+          departments={departments}
+          batches={batches}
+          sessions={sessions}
+          onRefresh={onRefresh}
+        />
       )}
 
-      {/* TAB 4: TEACHER ASSIGNMENT & RULE 10 ENFORCEMENT */}
+      {/* TAB 4: TEACHER MANAGEMENT & ASSIGNMENTS */}
       {activeTab === 'teachers' && (
-        <div className="space-y-6">
-          <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 text-xs text-indigo-950 space-y-1">
-            <h4 className="font-bold flex items-center space-x-1.5 text-indigo-900">
-              <Shield className="w-4 h-4 text-indigo-700" />
-              <span>Teacher Course Assignment Policy (Prompt Section 10)</span>
-            </h4>
-            <p>
-              Rule Enforcement: A teacher can teach <strong>MAXIMUM ONE regular/theory course</strong> in a specific semester + batch.
-              However, if a laboratory course exists, the teacher may additionally be assigned the relevant lab.
-              The assignment form validates this constraint before recording.
-            </p>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/70">
-              <h3 className="font-bold text-slate-900 text-sm">Current Teacher Course Assignments</h3>
-              <button
-                onClick={() => setAssignModalOpen(true)}
-                className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>New Assignment</span>
-              </button>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
-                  <tr>
-                    <th className="py-3 px-4">Teacher</th>
-                    <th className="py-3 px-4">Assigned Course</th>
-                    <th className="py-3 px-4">Course Type</th>
-                    <th className="py-3 px-4">Batch / Cohort</th>
-                    <th className="py-3 px-4">Role</th>
-                    <th className="py-3 px-4">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {assignments.map(ta => {
-                    const teacher = teachers.find(t => t.id === ta.teacherId);
-                    const off = offerings.find(o => o.id === ta.courseOfferingId);
-                    const crs = off ? courses.find(c => c.id === off.courseId) : undefined;
-                    const batch = off ? batches.find(b => b.id === off.batchId) : undefined;
-
-                    return (
-                      <tr key={ta.id} className="hover:bg-slate-50">
-                        <td className="py-3 px-4">
-                          <div className="font-bold text-slate-900">{teacher?.name}</div>
-                          <div className="text-[11px] text-slate-400">{teacher?.designation}</div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className="font-mono font-bold text-indigo-700 mr-1.5">{crs?.code}</span>
-                          <span className="text-slate-700 font-medium">{crs?.name}</span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            crs?.type === 'THEORY' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'
-                          }`}>
-                            {crs?.type}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-slate-600 font-medium">
-                          {batch?.name}
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
-                            {ta.role}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <button
-                            onClick={() => {
-                              db.removeTeacherAssignment(ta.id);
-                              onRefresh();
-                            }}
-                            className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
-                            title="Remove assignment"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+        <AdminTeacherManagement
+          teachers={teachers}
+          courses={courses}
+          departments={departments}
+          offerings={offerings}
+          batches={batches}
+          onRefresh={onRefresh}
+        />
       )}
 
-      {/* TAB 5: STUDENTS & ENROLLMENT */}
+      {/* TAB 5: STUDENTS DIRECTORY & MANAGEMENT */}
       {activeTab === 'students' && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/70">
-              <h3 className="font-bold text-slate-900 text-sm">Enrolled Student Profiles</h3>
-              <span className="text-xs text-slate-400 font-mono">Total: {students.length} students</span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
-                  <tr>
-                    <th className="py-3 px-4">Student ID / Roll</th>
-                    <th className="py-3 px-4">Name</th>
-                    <th className="py-3 px-4">Cohort Batch</th>
-                    <th className="py-3 px-4">Year & Semester</th>
-                    <th className="py-3 px-4">Biometric Face Status</th>
-                    <th className="py-3 px-4">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {students.map(s => {
-                    const batch = batches.find(b => b.id === s.batchId);
-                    return (
-                      <tr key={s.id} className="hover:bg-slate-50">
-                        <td className="py-3 px-4 font-mono font-bold text-indigo-700">{s.studentId}</td>
-                        <td className="py-3 px-4 font-semibold text-slate-900">{s.name}</td>
-                        <td className="py-3 px-4 text-slate-600">{batch?.name}</td>
-                        <td className="py-3 px-4 text-slate-600">Year {s.year}, Sem {s.semester}</td>
-                        <td className="py-3 px-4">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              s.hasFaceProfile
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-300'
-                                : 'bg-amber-50 text-amber-700 border border-amber-300'
-                            }`}
-                          >
-                            {s.hasFaceProfile ? 'Face Enrolled' : 'Not Enrolled'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
-                            {s.status}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+        <AdminStudentManagement
+          students={students}
+          departments={departments}
+          batches={batches}
+          sessions={sessions}
+          onRefresh={onRefresh}
+        />
       )}
 
-      {/* TAB 6: ROUTINES & TIMETABLE */}
+      {/* TAB 6: COURSE ENROLLMENTS */}
+      {activeTab === 'enrollments' && (
+        <AdminEnrollmentManagement
+          students={students}
+          courses={courses}
+          offerings={offerings}
+          batches={batches}
+          enrollments={enrollments}
+          onRefresh={onRefresh}
+        />
+      )}
+
+      {/* TAB 7: ROUTINES & TIMETABLE */}
       {activeTab === 'routine' && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/70">
-              <div>
-                <h3 className="font-bold text-slate-900 text-sm">Class Timetable & Routine Schedule</h3>
-                <p className="text-xs text-slate-500">
-                  Configured lecture slots triggering automated teacher email reminders
-                </p>
-              </div>
-              <span className="text-xs text-slate-400 font-mono">{routines.length} routines</span>
-            </div>
+        <AdminRoutineManagement
+          routines={routines}
+          offerings={offerings}
+          courses={courses}
+          teachers={teachers}
+          students={students}
+          onRefresh={onRefresh}
+        />
+      )}
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
-                  <tr>
-                    <th className="py-3 px-4">Day</th>
-                    <th className="py-3 px-4">Time Slot</th>
-                    <th className="py-3 px-4">Course</th>
-                    <th className="py-3 px-4">Teacher</th>
-                    <th className="py-3 px-4">Room & Venue</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {routines.map(rt => {
-                    const off = offerings.find(o => o.id === rt.courseOfferingId);
-                    const crs = off ? courses.find(c => c.id === off.courseId) : undefined;
-                    const tch = teachers.find(t => t.id === rt.teacherId);
-
-                    return (
-                      <tr key={rt.id} className="hover:bg-slate-50">
-                        <td className="py-3 px-4 font-bold text-slate-900">{rt.dayOfWeek}</td>
-                        <td className="py-3 px-4 font-mono font-semibold text-indigo-700">
-                          {rt.startTime} - {rt.endTime}
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className="font-bold font-mono text-slate-900 mr-1.5">{crs?.code}</span>
-                          <span className="text-slate-600">{crs?.name}</span>
-                        </td>
-                        <td className="py-3 px-4 font-semibold text-slate-800">{tch?.name}</td>
-                        <td className="py-3 px-4 text-slate-600">{rt.room} ({rt.building})</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+      {/* TAB 8: ATTENDANCE WARNINGS (<60%) & REAL EMAIL LOGS */}
+      {activeTab === 'risk_emails' && (
+        <AdminEmailAndRiskManagement onRefresh={onRefresh} />
       )}
 
       {/* TAB 7: MANUAL ATTENDANCE CORRECTIONS & AUDIT (Section 4 & 37) */}
@@ -684,6 +494,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onRefresh }) => 
       {/* TAB 8: SYSTEM SETTINGS, EMAIL LOGS & AUDIT TRAIL */}
       {activeTab === 'settings' && (
         <div className="space-y-6">
+          {/* Cloud Firestore & Firebase Auth Status Card */}
+          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-6 text-white shadow-md border border-indigo-800/40 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                <h4 className="font-bold text-sm text-white">Database Engine: Google Cloud Firestore (Live Production)</h4>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
+                Firestore & Auth Active
+              </span>
+            </div>
+
+            <div className="font-mono text-xs text-amber-300 bg-slate-950/80 p-3 rounded-xl border border-slate-800 select-all overflow-x-auto space-y-1">
+              <div><span className="text-slate-400">Database ID:</span> ai-studio-uniattendunivers-c5e1918d-4a9e-4935-a356-3195f6c33ea5</div>
+              <div><span className="text-slate-400">Project:</span> gen-lang-client-0312401566 &bull; <span className="text-slate-400">Admin Account:</span> it24026@mbstu.ac.bd</div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300 pt-1">
+              <span>Security Rules: <strong>RBAC + Deny-All Enforcement Active</strong></span>
+              <span className="text-slate-400">MySQL schema backup also preserved in <code className="text-indigo-300">schema_mysql.sql</code></span>
+            </div>
+          </div>
+
           {/* Configurable Rules Form (Prompt Section 17, 21, 19) */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4 max-w-2xl">
             <h3 className="font-bold text-slate-900 text-sm">Configurable University Attendance Policies</h3>

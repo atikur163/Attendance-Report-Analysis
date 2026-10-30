@@ -23,6 +23,7 @@ import { NotificationService } from '../../services/notificationService';
 import { computeStudentCourseAnalytics } from '../../services/attendanceEngine';
 import { AttendanceSession, CourseOffering, Course, Teacher } from '../../types';
 import { getStatusBadgeClasses, getRiskBadgeClasses } from '../../utils/formatters';
+import { TeacherManualAttendance } from './TeacherManualAttendance';
 
 interface TeacherDashboardProps {
   teacherId?: string;
@@ -34,7 +35,19 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   onRefresh,
 }) => {
   const teachers = db.getTeachers();
-  const currentTeacher: Teacher = teachers.find(t => t.id === teacherId) || teachers[0];
+  const currentTeacher: Teacher | undefined = teachers.find(t => t.id === teacherId) || teachers[0];
+
+  if (!currentTeacher) {
+    return (
+      <div className="max-w-md mx-auto p-8 text-center bg-white rounded-2xl border border-slate-200 mt-8 shadow-xs">
+        <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+        <h3 className="font-bold text-slate-800 text-base">Teacher Profile Not Found</h3>
+        <p className="text-xs text-slate-500 mt-1">
+          No teacher profile could be found for this account. Please contact the administrator.
+        </p>
+      </div>
+    );
+  }
 
   // Teacher assignments & courses (Only assigned courses appear!)
   const assignments = db.getTeacherAssignments().filter(ta => ta.teacherId === currentTeacher.id);
@@ -65,10 +78,29 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [attendanceMethod, setAttendanceMethod] = useState<'QR' | 'FACE'>('QR');
   const [sessionNotes, setSessionNotes] = useState('');
 
+  // View mode tab: live, manual attendance, or analytics
+  const [activeViewTab, setActiveViewTab] = useState<'live' | 'manual' | 'analytics'>('live');
+
   // Selected course for analytics view
   const [selectedCourseOfferingId, setSelectedCourseOfferingId] = useState<string>(
     assignments[0]?.courseOfferingId || ''
   );
+
+  // Keep active session in sync with allSessions
+  useEffect(() => {
+    const liveActive = allSessions.find(s => s.teacherId === currentTeacher.id && s.status === 'ACTIVE') || null;
+    setActiveSession(liveActive);
+  }, [allSessions, currentTeacher.id]);
+
+  // Keep offering selection in sync if assignments change
+  useEffect(() => {
+    if (!selectedOfferingId && assignments.length > 0) {
+      setSelectedOfferingId(assignments[0].courseOfferingId);
+    }
+    if (!selectedCourseOfferingId && assignments.length > 0) {
+      setSelectedCourseOfferingId(assignments[0].courseOfferingId);
+    }
+  }, [assignments, selectedOfferingId, selectedCourseOfferingId]);
 
   // Generate QR code when active session changes or refreshes
   useEffect(() => {
@@ -158,25 +190,30 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     ? enrollments.filter(e => e.courseOfferingId === viewingOffering.id && e.status === 'ENROLLED')
     : [];
 
-  const studentAnalyticsList = viewingEnrollments.map(enr => {
-    const student = allStudents.find(s => s.id === enr.studentId)!;
-    const studentRecords = allRecords.filter(
-      r => r.courseOfferingId === viewingOffering?.id && r.studentId === student.id
-    );
+  const studentAnalyticsList = viewingOffering && viewingCourse
+    ? viewingEnrollments
+        .map(enr => {
+          const student = allStudents.find(s => s.id === enr.studentId);
+          if (!student) return null;
+          const studentRecords = allRecords.filter(
+            r => r.courseOfferingId === viewingOffering.id && r.studentId === student.id
+          );
 
-    return computeStudentCourseAnalytics({
-      studentId: student.id,
-      studentName: student.name,
-      studentRoll: student.studentId,
-      courseOffering: viewingOffering!,
-      courseCode: viewingCourse?.code || '',
-      courseName: viewingCourse?.name || '',
-      credit: viewingCourse?.credit || 3,
-      courseType: viewingCourse?.type || 'THEORY',
-      records: studentRecords,
-      settings,
-    });
-  });
+          return computeStudentCourseAnalytics({
+            studentId: student.id,
+            studentName: student.name,
+            studentRoll: student.studentId,
+            courseOffering: viewingOffering,
+            courseCode: viewingCourse.code || '',
+            courseName: viewingCourse.name || '',
+            credit: viewingCourse.credit || 3,
+            courseType: viewingCourse.type || 'THEORY',
+            records: studentRecords,
+            settings,
+          });
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null)
+    : [];
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -227,12 +264,40 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         </div>
       )}
 
-      {/* TODAY'S SCHEDULE & ROUTINE REMINDER (Section 11 & 12) */}
-      <div className="space-y-3">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
-          <Calendar className="w-4 h-4 text-indigo-600" />
-          <span>My Timetable & Routine Schedule</span>
-        </h3>
+      {/* Sub-Tab Navigation Bar */}
+      <div className="flex border-b border-slate-200 space-x-2 sm:space-x-6 text-xs font-semibold overflow-x-auto pb-1">
+        {[
+          { id: 'live', label: 'Live Kiosk & Timetable', icon: QrCode },
+          { id: 'manual', label: 'Manual Attendance Sheet', icon: UserCheck },
+          { id: 'analytics', label: 'Student Cohort Analytics', icon: Users },
+        ].map(tab => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveViewTab(tab.id as any)}
+              className={`py-2.5 px-1 border-b-2 flex items-center space-x-1.5 transition-colors whitespace-nowrap ${
+                activeViewTab === tab.id
+                  ? 'border-indigo-600 text-indigo-700 font-bold'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* TAB 1: LIVE ATTENDANCE & SCHEDULE */}
+      {activeViewTab === 'live' && (
+        <div className="space-y-8">
+          {/* TODAY'S SCHEDULE & ROUTINE REMINDER */}
+          <div className="space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
+              <Calendar className="w-4 h-4 text-indigo-600" />
+              <span>My Timetable & Routine Schedule</span>
+            </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {routines.map(rt => {
@@ -416,10 +481,24 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           </div>
         </div>
       )}
+        </div>
+      )}
 
-      {/* ASSIGNED COURSES & ANALYTICS (Section 27 & 29) */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/70">
+      {/* TAB 2: MANUAL ATTENDANCE SHEET */}
+      {activeViewTab === 'manual' && (
+        <TeacherManualAttendance
+          teacher={currentTeacher}
+          offerings={offerings}
+          courses={courses}
+          students={allStudents}
+          onRefresh={onRefresh}
+        />
+      )}
+
+      {/* TAB 3: ASSIGNED COURSES & ANALYTICS */}
+      {(activeViewTab === 'analytics' || activeViewTab === 'live') && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          <div className="p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/70">
           <div>
             <h3 className="font-bold text-slate-900 text-sm">Course Attendance Analytics & Student Records</h3>
             <p className="text-xs text-slate-500">
@@ -528,6 +607,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           </table>
         </div>
       </div>
+      )}
 
       {/* START ATTENDANCE MODAL */}
       {isStartModalOpen && (

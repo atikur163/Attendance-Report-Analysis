@@ -8,7 +8,13 @@ Tests:
 - Critical non-recoverable status
 """
 import unittest
-from app.services.attendance_engine import (
+import sys
+import os
+
+# Add app directory to sys.path directly to test services without needing web framework installed
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'app')))
+
+from services.attendance_engine import (
     determine_attendance_status,
     calculate_consecutive_late_penalties,
     compute_course_attendance_analytics

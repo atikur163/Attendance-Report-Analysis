@@ -31,28 +31,34 @@ export const AnalyticsReports: React.FC<AnalyticsReportsProps> = ({ onRefresh })
   const records = db.getAttendanceRecords();
   const settings = db.getSettings();
 
-  // Compute analytics for all enrollments
-  const allStudentAnalytics = enrollments.map(enr => {
-    const student = students.find(s => s.id === enr.studentId)!;
-    const offering = offerings.find(o => o.id === enr.courseOfferingId)!;
-    const course = courses.find(c => c.id === offering.courseId)!;
-    const courseRecords = records.filter(
-      r => r.courseOfferingId === offering.id && r.studentId === student.id
-    );
+  // Compute analytics for all valid enrollments safely
+  const allStudentAnalytics = enrollments
+    .map(enr => {
+      const student = students.find(s => s.id === enr.studentId);
+      const offering = offerings.find(o => o.id === enr.courseOfferingId);
+      if (!student || !offering) return null;
 
-    return computeStudentCourseAnalytics({
-      studentId: student.id,
-      studentName: student.name,
-      studentRoll: student.studentId,
-      courseOffering: offering,
-      courseCode: course.code,
-      courseName: course.name,
-      credit: course.credit,
-      courseType: course.type,
-      records: courseRecords,
-      settings,
-    });
-  });
+      const course = courses.find(c => c.id === offering.courseId);
+      if (!course) return null;
+
+      const courseRecords = records.filter(
+        r => r.courseOfferingId === offering.id && r.studentId === student.id
+      );
+
+      return computeStudentCourseAnalytics({
+        studentId: student.id,
+        studentName: student.name,
+        studentRoll: student.studentId,
+        courseOffering: offering,
+        courseCode: course.code,
+        courseName: course.name,
+        credit: course.credit,
+        courseType: course.type,
+        records: courseRecords,
+        settings,
+      });
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
 
   // Filter by batch if selected
   const filteredAnalytics = allStudentAnalytics.filter(item => {

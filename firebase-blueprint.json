@@ -1,0 +1,282 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Authenticated user profile with role-based access control.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["ADMIN", "TEACHER", "STUDENT"] },
+        "studentId": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Department": {
+      "title": "Department",
+      "description": "Academic department.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "building": { "type": "string" }
+      },
+      "required": ["id", "code", "name"]
+    },
+    "AcademicSession": {
+      "title": "AcademicSession",
+      "description": "Academic year session.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "isCurrent": { "type": "boolean" }
+      },
+      "required": ["id", "name"]
+    },
+    "Batch": {
+      "title": "Batch",
+      "description": "Student cohort for academic year levels.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "startYear": { "type": "number" },
+        "departmentId": { "type": "string" },
+        "currentYear": { "type": "number" },
+        "currentSemester": { "type": "number" }
+      },
+      "required": ["id", "name", "departmentId", "currentYear", "currentSemester"]
+    },
+    "Course": {
+      "title": "Course",
+      "description": "University syllabus course definition.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "credit": { "type": "number" },
+        "type": { "type": "string", "enum": ["THEORY", "LAB"] },
+        "departmentId": { "type": "string" },
+        "year": { "type": "number" },
+        "semester": { "type": "number" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "code", "name", "credit", "type", "year", "semester"]
+    },
+    "CourseOffering": {
+      "title": "CourseOffering",
+      "description": "Specific course running for a batch and semester.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "courseId": { "type": "string" },
+        "departmentId": { "type": "string" },
+        "academicSessionId": { "type": "string" },
+        "year": { "type": "number" },
+        "semester": { "type": "number" },
+        "batchId": { "type": "string" },
+        "section": { "type": "string" },
+        "plannedClasses": { "type": "number" },
+        "conductedClasses": { "type": "number" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "courseId", "batchId", "year", "semester"]
+    },
+    "Teacher": {
+      "title": "Teacher",
+      "description": "Faculty member instructor profile.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "departmentId": { "type": "string" },
+        "designation": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "teacherId", "name", "email"]
+    },
+    "TeacherAssignment": {
+      "title": "TeacherAssignment",
+      "description": "Assignment of teacher to course offering (max 1 regular theory course).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "courseOfferingId": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "role": { "type": "string" },
+        "assignedAt": { "type": "string" }
+      },
+      "required": ["id", "courseOfferingId", "teacherId"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Undergraduate student record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "departmentId": { "type": "string" },
+        "academicSessionId": { "type": "string" },
+        "year": { "type": "number" },
+        "semester": { "type": "number" },
+        "batchId": { "type": "string" },
+        "section": { "type": "string" },
+        "status": { "type": "string" },
+        "hasFaceProfile": { "type": "boolean" }
+      },
+      "required": ["id", "studentId", "name", "email", "batchId"]
+    },
+    "StudentEnrollment": {
+      "title": "StudentEnrollment",
+      "description": "Enrollment of a student in a course offering.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "courseOfferingId": { "type": "string" },
+        "enrolledAt": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "studentId", "courseOfferingId"]
+    },
+    "AttendanceSession": {
+      "title": "AttendanceSession",
+      "description": "Active or closed attendance session with dynamic QR or Face mode.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "courseOfferingId": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "date": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "attendanceMethod": { "type": "string", "enum": ["QR", "FACE"] },
+        "status": { "type": "string", "enum": ["SCHEDULED", "ACTIVE", "CLOSED", "CANCELLED"] },
+        "currentToken": { "type": "string" },
+        "tokenExpiresAt": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "courseOfferingId", "teacherId", "attendanceMethod", "status"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Student attendance record with Present, Late, or Absent status.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "courseOfferingId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "method": { "type": "string" },
+        "status": { "type": "string", "enum": ["PRESENT", "LATE", "ABSENT"] },
+        "minutesLate": { "type": "number" },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "sessionId", "courseOfferingId", "studentId", "status"]
+    },
+    "AttendanceCorrection": {
+      "title": "AttendanceCorrection",
+      "description": "Audit record for manual attendance correction by Admin with reason.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "attendanceId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "courseOfferingId": { "type": "string" },
+        "courseCode": { "type": "string" },
+        "originalStatus": { "type": "string" },
+        "newStatus": { "type": "string" },
+        "changedBy": { "type": "string" },
+        "reason": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "studentId", "originalStatus", "newStatus", "changedBy", "reason"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "System-wide administrative audit action trail.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "action": { "type": "string" },
+        "entity": { "type": "string" },
+        "entityId": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "action", "entity", "details", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User account documents containing user roles."
+    },
+    "/departments/{departmentId}": {
+      "schema": { "$ref": "#/entities/Department" },
+      "description": "University academic departments."
+    },
+    "/academic_sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/AcademicSession" },
+      "description": "Academic sessions."
+    },
+    "/batches/{batchId}": {
+      "schema": { "$ref": "#/entities/Batch" },
+      "description": "Student batches."
+    },
+    "/courses/{courseId}": {
+      "schema": { "$ref": "#/entities/Course" },
+      "description": "Curriculum courses."
+    },
+    "/course_offerings/{offeringId}": {
+      "schema": { "$ref": "#/entities/CourseOffering" },
+      "description": "Course offerings per batch and semester."
+    },
+    "/teachers/{teacherId}": {
+      "schema": { "$ref": "#/entities/Teacher" },
+      "description": "Faculty teachers."
+    },
+    "/teacher_assignments/{assignmentId}": {
+      "schema": { "$ref": "#/entities/TeacherAssignment" },
+      "description": "Assignments of teachers to offerings."
+    },
+    "/students/{studentId}": {
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "Enrolled students."
+    },
+    "/student_enrollments/{enrollmentId}": {
+      "schema": { "$ref": "#/entities/StudentEnrollment" },
+      "description": "Student course enrollments."
+    },
+    "/attendance_sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/AttendanceSession" },
+      "description": "Class attendance sessions."
+    },
+    "/attendance_records/{recordId}": {
+      "schema": { "$ref": "#/entities/AttendanceRecord" },
+      "description": "Attendance check-ins."
+    },
+    "/attendance_corrections/{correctionId}": {
+      "schema": { "$ref": "#/entities/AttendanceCorrection" },
+      "description": "Manual attendance corrections by Admin."
+    },
+    "/audit_logs/{auditId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Administrative audit trail."
+    }
+  }
+}

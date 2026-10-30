@@ -43,40 +43,56 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   const [scanFeedback, setScanFeedback] = useState<{ success: boolean; message: string } | null>(null);
 
   const student = db.getStudents().find(s => s.id === studentId) || db.getStudents()[0];
-  const enrollments = db.getStudentEnrollments().filter(e => e.studentId === student.id && e.status === 'ENROLLED');
+  const enrollments = student ? db.getStudentEnrollments().filter(e => e.studentId === student.id && e.status === 'ENROLLED') : [];
   const courseOfferings = db.getCourseOfferings();
   const courses = db.getCourses();
-  const allRecords = db.getAttendanceRecords().filter(r => r.studentId === student.id);
+  const allRecords = student ? db.getAttendanceRecords().filter(r => r.studentId === student.id) : [];
   const settings = db.getSettings();
-  const faceProfile = db.getFaceProfile(student.id);
+  const faceProfile = student ? db.getFaceProfile(student.id) : null;
+
+  if (!student) {
+    return (
+      <div className="max-w-md mx-auto p-8 text-center bg-white rounded-2xl border border-slate-200 mt-8 shadow-xs">
+        <AlertCircle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+        <h3 className="font-bold text-slate-800 text-base">Student Profile Not Found</h3>
+        <p className="text-xs text-slate-500 mt-1">
+          No student profile could be found for this account. Please contact the administrator.
+        </p>
+      </div>
+    );
+  }
 
   // Compute analytics for each registered course
-  const studentCourses = enrollments.map(enr => {
-    const offering = courseOfferings.find(co => co.id === enr.courseOfferingId)!;
-    const course = courses.find(c => c.id === offering.courseId)!;
-    const courseRecords = allRecords.filter(r => r.courseOfferingId === offering.id);
+  const studentCourses = enrollments
+    .map(enr => {
+      const offering = courseOfferings.find(co => co.id === enr.courseOfferingId);
+      if (!offering) return null;
+      const course = courses.find(c => c.id === offering.courseId);
+      if (!course) return null;
+      const courseRecords = allRecords.filter(r => r.courseOfferingId === offering.id);
 
-    const analytics = computeStudentCourseAnalytics({
-      studentId: student.id,
-      studentName: student.name,
-      studentRoll: student.studentId,
-      courseOffering: offering,
-      courseCode: course.code,
-      courseName: course.name,
-      credit: course.credit,
-      courseType: course.type,
-      records: courseRecords,
-      settings,
-    });
+      const analytics = computeStudentCourseAnalytics({
+        studentId: student.id,
+        studentName: student.name,
+        studentRoll: student.studentId,
+        courseOffering: offering,
+        courseCode: course.code,
+        courseName: course.name,
+        credit: course.credit,
+        courseType: course.type,
+        records: courseRecords,
+        settings,
+      });
 
-    return {
-      enrollment: enr,
-      offering,
-      course,
-      analytics,
-      records: courseRecords,
-    };
-  });
+      return {
+        enrollment: enr,
+        offering,
+        course,
+        analytics,
+        records: courseRecords,
+      };
+    })
+    .filter((sc): sc is NonNullable<typeof sc> => sc !== null);
 
   // Calculate student overall summary
   const totalConducted = studentCourses.reduce((sum, sc) => sum + sc.analytics.conductedClasses, 0);

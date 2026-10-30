@@ -1,0 +1,193 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default Deny All Catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Common Security Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isBootstrappedAdmin() {
+      return isSignedIn() && request.auth.token.email == 'it24026@mbstu.ac.bd';
+    }
+
+    function hasUserDoc() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function getUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (hasUserDoc() && (getUserDoc().role == 'ADMIN' || getUserDoc().role == 'admin'));
+    }
+
+    function isTeacher() {
+      return isAdmin() || (hasUserDoc() && (getUserDoc().role == 'TEACHER' || getUserDoc().role == 'teacher'));
+    }
+
+    function isStudent() {
+      return hasUserDoc() && (getUserDoc().role == 'STUDENT' || getUserDoc().role == 'student');
+    }
+
+    function currentTeacherId() {
+      return hasUserDoc() && ('teacherId' in getUserDoc()) ? getUserDoc().teacherId : '';
+    }
+
+    function currentStudentId() {
+      return hasUserDoc() && ('studentId' in getUserDoc()) ? getUserDoc().studentId : '';
+    }
+
+    // 1. Users collection
+    // Users can read own profile or Admins/Teachers can view user directories
+    // Users can register their own profile, but cannot elevate themselves to ADMIN unless bootstrapped
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin() || isTeacher());
+      allow create: if isSignedIn() && (
+        (request.auth.uid == userId && (request.resource.data.role != 'ADMIN' || isBootstrappedAdmin())) ||
+        isAdmin()
+      );
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (request.auth.uid == userId && (
+          // Standard users cannot self-elevate to ADMIN
+          (request.resource.data.role != 'ADMIN' || isBootstrappedAdmin())
+        ))
+      );
+      allow delete: if isAdmin();
+    }
+
+    // 2. Academic Curriculum Structure (Departments, Sessions, Batches, Courses, Routines)
+    // Read allowed for all authenticated university members; writes strictly restricted to Admins
+    match /departments/{departmentId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /academic_sessions/{sessionId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /batches/{batchId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /courses/{courseId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /routines/{routineId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // 3. Teachers & Teacher Assignments
+    // Requirement 9: Ensure only authorized Admin users can create, edit, or delete teacher accounts
+    match /teachers/{teacherId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /teacher_assignments/{assignmentId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // 4. Students & Student Enrollments
+    // Requirement 9: Ensure only authorized Admin users can create, edit, or delete student accounts
+    match /students/{studentId} {
+      allow read: if isSignedIn();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isSignedIn() && currentStudentId() == studentId &&
+        // Students cannot change their academic standing, studentId, batchId, or departmentId
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['id', 'studentId', 'batchId', 'departmentId', 'status'])
+      );
+    }
+
+    match /student_enrollments/{enrollmentId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // 5. Course Offerings
+    match /course_offerings/{offeringId} {
+      allow read: if isSignedIn();
+      allow create, delete: if isAdmin();
+      // Teachers can update conductedClasses count when conducting a class
+      allow update: if isAdmin() || isTeacher();
+    }
+
+    // 6. Attendance Sessions
+    // Teachers & Admins can create and manage attendance sessions
+    // Students can read active sessions to verify tokens & perform check-in
+    match /attendance_sessions/{sessionId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() || isTeacher();
+      allow update: if isAdmin() || (
+        isTeacher() && (
+          currentTeacherId() == '' ||
+          resource.data.teacherId == currentTeacherId() ||
+          resource.data.teacherId == request.auth.uid
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    // 7. Attendance Records
+    // Requirement 10: Teachers access course records; Students access only their permitted data
+    match /attendance_records/{recordId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        isTeacher() ||
+        resource.data.studentId == currentStudentId()
+      );
+      // Students can record their own attendance; Teachers & Admin can record
+      allow create: if isSignedIn() && (
+        isAdmin() ||
+        isTeacher() ||
+        request.resource.data.studentId == currentStudentId() ||
+        exists(/databases/$(database)/documents/attendance_sessions/$(request.resource.data.sessionId))
+      );
+      // Updates and deletions are restricted to Admin (Official corrections and audit logs)
+      allow update, delete: if isAdmin();
+    }
+
+    // 8. Attendance Corrections & Audit Logs
+    match /attendance_corrections/{correctionId} {
+      allow read: if isAdmin() || isTeacher();
+      allow write: if isAdmin();
+    }
+
+    match /audit_logs/{auditId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    match /email_logs/{emailId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    match /face_profiles/{studentId} {
+      allow read: if isAdmin() || isTeacher() || (isSignedIn() && currentStudentId() == studentId);
+      allow write: if isAdmin() || (isSignedIn() && currentStudentId() == studentId);
+    }
+
+    match /system_settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

@@ -73,6 +73,7 @@ export interface Teacher {
   phone?: string;
   status: 'ACTIVE' | 'ON_LEAVE' | 'INACTIVE';
   authorizedCourseIds: string[]; // List of Course IDs this teacher is eligible to teach
+  authUid?: string;
 }
 
 export interface TeacherAssignment {
@@ -110,9 +111,10 @@ export interface Student {
   semester: number; // 1, 2
   batchId: string;
   section: string;
-  status: 'ACTIVE' | 'DROPOUT' | 'GRADUATED';
+  status: 'ACTIVE' | 'INACTIVE' | 'DROPOUT' | 'GRADUATED';
   hasFaceProfile: boolean;
   avatarUrl?: string;
+  authUid?: string;
 }
 
 export interface StudentEnrollment {
@@ -204,13 +206,15 @@ export interface EmailLog {
   recipientEmail: string;
   recipientName: string;
   recipientRole: 'TEACHER' | 'STUDENT' | 'ADMIN';
-  type: 'CLASS_REMINDER' | 'ATTENDANCE_WARNING' | 'SYSTEM_ALERT';
+  type: 'CLASS_REMINDER' | 'ATTENDANCE_WARNING' | 'SYSTEM_ALERT' | 'ACCOUNT_CREATED' | 'ROUTINE_CHANGED';
   courseOfferingId?: string;
   subject: string;
   body: string;
   dedupKey: string; // To prevent duplicate emails for same event
   sentAt: string;
-  status: 'SENT' | 'SIMULATED';
+  status: 'SENT' | 'SIMULATED' | 'FAILED' | 'CONFIG_REQUIRED';
+  error?: string;
+  retryCount?: number;
 }
 
 export interface SystemAuditLog {
@@ -266,6 +270,7 @@ export interface StudentCourseAnalytics {
   // Projections
   maximumPossibleAttendance: number;
   requiredFutureAttendance: number;
+  consecutiveClassesToReach60: number;
   isRecoverable: boolean;
   riskLevel: RiskLevel;
 }

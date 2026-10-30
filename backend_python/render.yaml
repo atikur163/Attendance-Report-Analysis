@@ -1,0 +1,29 @@
+# Render Infrastructure Blueprint for UniAttend Platform
+# Deploy directly by linking repository to Render
+services:
+  - type: web
+    name: uniattend-backend
+    env: python
+    region: oregon # or frankfurt, singapore
+    plan: free # or starter / standard
+    buildCommand: "pip install --upgrade pip && pip install -r requirements.txt"
+    startCommand: "gunicorn --workers=3 --bind=0.0.0.0:$PORT run:app"
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: SECRET_KEY
+        generateValue: true
+      # Connect your MySQL Database (e.g. Aiven MySQL, PlanetScale, Railway, or Render PostgreSQL/MySQL)
+      # Format: mysql+pymysql://<user>:<password>@<host>:<port>/<database>?charset=utf8mb4
+      - key: DATABASE_URL
+        sync: false
+      - key: LATE_THRESHOLD_MINUTES
+        value: "20"
+      - key: EXAM_ELIGIBILITY_PERCENTAGE
+        value: "60.0"
+      - key: THREE_LATE_PENALTY_ENABLED
+        value: "True"
