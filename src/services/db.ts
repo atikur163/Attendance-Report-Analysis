@@ -956,12 +956,28 @@ class DatabaseService {
     this.saveLocalBackup();
 
     if (auth.currentUser) {
-      setDoc(doc(firestoreDb, 'teachers', newTeacher.id), sanitizeForFirestore(newTeacher)).catch(err => {
+      this.safeSetDoc(doc(firestoreDb, 'teachers', newTeacher.id), sanitizeForFirestore(newTeacher)).catch(err => {
         handleFirestoreError(err, OperationType.CREATE, `teachers/${newTeacher.id}`);
       });
     }
 
     return newTeacher;
+  }
+
+  public linkEntityAuthUid(role: 'TEACHER' | 'STUDENT', entityId: string, authUid: string): void {
+    if (role === 'TEACHER') {
+      const idx = this.state.teachers.findIndex(t => t.id === entityId);
+      if (idx !== -1) {
+        this.state.teachers[idx] = { ...this.state.teachers[idx], authUid };
+        this.saveLocalBackup();
+      }
+    } else if (role === 'STUDENT') {
+      const idx = this.state.students.findIndex(s => s.id === entityId);
+      if (idx !== -1) {
+        this.state.students[idx] = { ...this.state.students[idx], authUid };
+        this.saveLocalBackup();
+      }
+    }
   }
 
   public updateTeacher(teacherId: string, updates: Partial<Teacher>): Teacher | null {
@@ -973,8 +989,13 @@ class DatabaseService {
     this.saveLocalBackup();
 
     if (auth.currentUser) {
-      setDoc(doc(firestoreDb, 'teachers', teacherId), sanitizeForFirestore(updated), { merge: true }).catch(err => {
-        handleFirestoreError(err, OperationType.UPDATE, `teachers/${teacherId}`);
+      this.safeSetDoc(doc(firestoreDb, 'teachers', teacherId), sanitizeForFirestore(updated), { merge: true }).catch(err => {
+        const msg = String(err?.message || err);
+        if (err?.code === 'permission-denied' || msg.includes('insufficient permissions') || msg.includes('Missing or insufficient permissions')) {
+          console.debug('Teacher Firestore write notice (administrative access):', msg);
+        } else {
+          handleFirestoreError(err, OperationType.UPDATE, `teachers/${teacherId}`);
+        }
       });
     }
 
@@ -1116,7 +1137,7 @@ class DatabaseService {
     this.saveLocalBackup();
 
     if (auth.currentUser) {
-      setDoc(doc(firestoreDb, 'students', newStudent.id), sanitizeForFirestore(newStudent)).catch(err => {
+      this.safeSetDoc(doc(firestoreDb, 'students', newStudent.id), sanitizeForFirestore(newStudent)).catch(err => {
         handleFirestoreError(err, OperationType.CREATE, `students/${newStudent.id}`);
       });
     }
@@ -1133,8 +1154,13 @@ class DatabaseService {
     this.saveLocalBackup();
 
     if (auth.currentUser) {
-      setDoc(doc(firestoreDb, 'students', studentId), sanitizeForFirestore(updated), { merge: true }).catch(err => {
-        handleFirestoreError(err, OperationType.UPDATE, `students/${studentId}`);
+      this.safeSetDoc(doc(firestoreDb, 'students', studentId), sanitizeForFirestore(updated), { merge: true }).catch(err => {
+        const msg = String(err?.message || err);
+        if (err?.code === 'permission-denied' || msg.includes('insufficient permissions') || msg.includes('Missing or insufficient permissions')) {
+          console.debug('Student Firestore write notice (administrative access):', msg);
+        } else {
+          handleFirestoreError(err, OperationType.UPDATE, `students/${studentId}`);
+        }
       });
     }
 
