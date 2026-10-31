@@ -552,7 +552,7 @@ class DatabaseService {
 
     try {
       this.syncing = true;
-      const isAdmin = role === 'ADMIN' || user.email === 'it24026@mbstu.ac.bd';
+      const isAdmin = role === 'ADMIN' || user.email === 'it24026@mbstu.ac.bd' || user.email === 'sabbirstudy2002@gmail.com';
       const isTeacher = role === 'TEACHER';
       const studentId = profile?.studentId || 'stu-01';
 
@@ -956,28 +956,12 @@ class DatabaseService {
     this.saveLocalBackup();
 
     if (auth.currentUser) {
-      this.safeSetDoc(doc(firestoreDb, 'teachers', newTeacher.id), sanitizeForFirestore(newTeacher)).catch(err => {
+      setDoc(doc(firestoreDb, 'teachers', newTeacher.id), sanitizeForFirestore(newTeacher)).catch(err => {
         handleFirestoreError(err, OperationType.CREATE, `teachers/${newTeacher.id}`);
       });
     }
 
     return newTeacher;
-  }
-
-  public linkEntityAuthUid(role: 'TEACHER' | 'STUDENT', entityId: string, authUid: string): void {
-    if (role === 'TEACHER') {
-      const idx = this.state.teachers.findIndex(t => t.id === entityId);
-      if (idx !== -1) {
-        this.state.teachers[idx] = { ...this.state.teachers[idx], authUid };
-        this.saveLocalBackup();
-      }
-    } else if (role === 'STUDENT') {
-      const idx = this.state.students.findIndex(s => s.id === entityId);
-      if (idx !== -1) {
-        this.state.students[idx] = { ...this.state.students[idx], authUid };
-        this.saveLocalBackup();
-      }
-    }
   }
 
   public updateTeacher(teacherId: string, updates: Partial<Teacher>): Teacher | null {
@@ -989,13 +973,8 @@ class DatabaseService {
     this.saveLocalBackup();
 
     if (auth.currentUser) {
-      this.safeSetDoc(doc(firestoreDb, 'teachers', teacherId), sanitizeForFirestore(updated), { merge: true }).catch(err => {
-        const msg = String(err?.message || err);
-        if (err?.code === 'permission-denied' || msg.includes('insufficient permissions') || msg.includes('Missing or insufficient permissions')) {
-          console.debug('Teacher Firestore write notice (administrative access):', msg);
-        } else {
-          handleFirestoreError(err, OperationType.UPDATE, `teachers/${teacherId}`);
-        }
+      setDoc(doc(firestoreDb, 'teachers', teacherId), sanitizeForFirestore(updated), { merge: true }).catch(err => {
+        handleFirestoreError(err, OperationType.UPDATE, `teachers/${teacherId}`);
       });
     }
 
@@ -1041,7 +1020,10 @@ class DatabaseService {
   }
 
   public canAssignTeacherToOffering(teacherId: string, courseOfferingId: string): { allowed: boolean; reason?: string } {
-    const teacher = this.state.teachers.find(t => t.id === teacherId);
+    const cleanTid = (teacherId || '').trim().toLowerCase();
+    const teacher = this.state.teachers.find(
+      t => t.id.toLowerCase() === cleanTid || t.teacherId.toLowerCase() === cleanTid
+    );
     if (!teacher) return { allowed: false, reason: 'Teacher not found' };
 
     const targetOffering = this.state.courseOfferings.find(co => co.id === courseOfferingId);
@@ -1050,14 +1032,11 @@ class DatabaseService {
     const targetCourse = this.state.courses.find(c => c.id === targetOffering.courseId);
     if (!targetCourse) return { allowed: false, reason: 'Course not found' };
 
-    // Check authorization
-    if (!teacher.authorizedCourseIds.includes(targetCourse.id)) {
-      return { allowed: false, reason: `Teacher is not authorized/eligible to teach ${targetCourse.code} (${targetCourse.name}). Add authorization first.` };
-    }
-
     // Check 1 regular/theory course rule per semester + batch
     if (targetCourse.type === 'THEORY') {
-      const existingAssignments = this.state.teacherAssignments.filter(ta => ta.teacherId === teacherId);
+      const existingAssignments = this.state.teacherAssignments.filter(
+        ta => ta.teacherId === teacher.id || ta.teacherId === teacher.teacherId
+      );
       for (const assign of existingAssignments) {
         const off = this.state.courseOfferings.find(co => co.id === assign.courseOfferingId);
         if (off && off.batchId === targetOffering.batchId && off.year === targetOffering.year && off.semester === targetOffering.semester) {
@@ -1076,20 +1055,48 @@ class DatabaseService {
   }
 
   public assignTeacherToOffering(teacherId: string, courseOfferingId: string, role: 'PRIMARY' | 'CO_TEACHER' = 'PRIMARY'): { success: boolean; message: string } {
-    const check = this.canAssignTeacherToOffering(teacherId, courseOfferingId);
+    const cleanTid = (teacherId || '').trim().toLowerCase();
+    const teacher = this.state.teachers.find(
+      t => t.id.toLowerCase() === cleanTid || t.teacherId.toLowerCase() === cleanTid
+    );
+    if (!teacher) {
+      return { success: false, message: 'Teacher not found in system.' };
+    }
+
+    const check = this.canAssignTeacherToOffering(teacher.id, courseOfferingId);
     if (!check.allowed) {
       return { success: false, message: check.reason || 'Assignment not allowed' };
     }
 
+    const targetOffering = this.state.courseOfferings.find(co => co.id === courseOfferingId);
+    if (!targetOffering) {
+      return { success: false, message: 'Target course offering not found.' };
+    }
+
+    // Auto-authorize course for teacher if not already present in authorizedCourseIds
+    if (!teacher.authorizedCourseIds.includes(targetOffering.courseId)) {
+      teacher.authorizedCourseIds.push(targetOffering.courseId);
+      this.updateTeacher(teacher.id, { authorizedCourseIds: [...teacher.authorizedCourseIds] });
+    }
+
+    // Prevent duplicate assignment of same teacher to same offering
+    const existing = this.state.teacherAssignments.find(
+      ta => (ta.teacherId === teacher.id || ta.teacherId === teacher.teacherId) && ta.courseOfferingId === courseOfferingId
+    );
+    if (existing) {
+      return { success: true, message: 'Teacher is already assigned to this course offering.' };
+    }
+
     const newAssignment: TeacherAssignment = {
       id: 'ta-' + Date.now(),
-      teacherId,
+      teacherId: teacher.id,
       courseOfferingId,
       role,
       assignedAt: new Date().toISOString(),
     };
     this.state.teacherAssignments.push(newAssignment);
     this.saveLocalBackup();
+    this.notifyListeners();
 
     this.safeSetDoc(doc(firestoreDb, 'teacher_assignments', newAssignment.id), newAssignment).catch(err => {
       handleFirestoreError(err, OperationType.CREATE, `teacher_assignments/${newAssignment.id}`);
@@ -1137,7 +1144,7 @@ class DatabaseService {
     this.saveLocalBackup();
 
     if (auth.currentUser) {
-      this.safeSetDoc(doc(firestoreDb, 'students', newStudent.id), sanitizeForFirestore(newStudent)).catch(err => {
+      setDoc(doc(firestoreDb, 'students', newStudent.id), sanitizeForFirestore(newStudent)).catch(err => {
         handleFirestoreError(err, OperationType.CREATE, `students/${newStudent.id}`);
       });
     }
@@ -1154,13 +1161,8 @@ class DatabaseService {
     this.saveLocalBackup();
 
     if (auth.currentUser) {
-      this.safeSetDoc(doc(firestoreDb, 'students', studentId), sanitizeForFirestore(updated), { merge: true }).catch(err => {
-        const msg = String(err?.message || err);
-        if (err?.code === 'permission-denied' || msg.includes('insufficient permissions') || msg.includes('Missing or insufficient permissions')) {
-          console.debug('Student Firestore write notice (administrative access):', msg);
-        } else {
-          handleFirestoreError(err, OperationType.UPDATE, `students/${studentId}`);
-        }
+      setDoc(doc(firestoreDb, 'students', studentId), sanitizeForFirestore(updated), { merge: true }).catch(err => {
+        handleFirestoreError(err, OperationType.UPDATE, `students/${studentId}`);
       });
     }
 

@@ -245,6 +245,16 @@ export const AdminTeacherManagement: React.FC<AdminTeacherManagementProps> = ({
       db.updateTeacher(newTeacher.id, { authUid: authResult.uid });
     }
 
+    // Auto-allocate teacher to matching active course offerings for authorized courses
+    if (addAuthorizedCourseIds.length > 0) {
+      for (const courseId of addAuthorizedCourseIds) {
+        const matchingOfferings = offerings.filter(o => o.courseId === courseId);
+        for (const off of matchingOfferings) {
+          db.assignTeacherToOffering(newTeacher.id, off.id);
+        }
+      }
+    }
+
     // Step 3: Send real email notification with account credentials, ID, assigned courses, and routine schedule
     const assignedCourses = courses.filter(c => addAuthorizedCourseIds.includes(c.id));
     const routineEntries = db.getRoutines().filter(r => r.teacherId === newTeacher.id);

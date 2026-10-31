@@ -84,10 +84,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const userSnap = await getDoc(userDocRef);
 
     // Bootstrap administrator check
-    if (cleanEmail === 'it24026@mbstu.ac.bd') {
+    if (cleanEmail === 'it24026@mbstu.ac.bd' || cleanEmail === 'sabbirstudy2002@gmail.com') {
       const adminProfile: UserProfile = {
         uid: user.uid,
-        email: user.email || 'it24026@mbstu.ac.bd',
+        email: user.email || cleanEmail,
         displayName: user.displayName || 'University Administrator',
         role: 'ADMIN',
         status: 'ACTIVE',
@@ -131,8 +131,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             teacherId: matched.id,
             status: 'ACTIVE',
           };
+          if (!matched.authUid || matched.authUid !== user.uid) {
+            db.updateTeacher(matched.id, { authUid: user.uid });
+          }
           await setDoc(userDocRef, sanitizeForFirestore(updatedProfile), { merge: true });
-          db.linkEntityAuthUid('TEACHER', matched.id, user.uid);
           return updatedProfile;
         }
       }
@@ -158,8 +160,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             studentId: matched.id,
             status: 'ACTIVE',
           };
+          if (!matched.authUid || matched.authUid !== user.uid) {
+            db.updateStudent(matched.id, { authUid: user.uid });
+          }
           await setDoc(userDocRef, sanitizeForFirestore(updatedProfile), { merge: true });
-          db.linkEntityAuthUid('STUDENT', matched.id, user.uid);
           return updatedProfile;
         }
       }
@@ -184,8 +188,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         status: 'ACTIVE',
         createdAt: new Date().toISOString(),
       };
+      db.updateTeacher(matchedTeacher.id, { authUid: user.uid });
       await setDoc(userDocRef, sanitizeForFirestore(teacherProfile), { merge: true });
-      db.linkEntityAuthUid('TEACHER', matchedTeacher.id, user.uid);
       return teacherProfile;
     }
 
@@ -214,7 +218,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: new Date().toISOString(),
         };
         await setDoc(userDocRef, sanitizeForFirestore(teacherProfile), { merge: true });
-        db.linkEntityAuthUid('TEACHER', teacherDoc.id, user.uid);
         return teacherProfile;
       }
     } catch (err) {
@@ -240,8 +243,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         status: 'ACTIVE',
         createdAt: new Date().toISOString(),
       };
+      db.updateStudent(matchedStudent.id, { authUid: user.uid });
       await setDoc(userDocRef, sanitizeForFirestore(studentProfile), { merge: true });
-      db.linkEntityAuthUid('STUDENT', matchedStudent.id, user.uid);
       return studentProfile;
     }
 
@@ -270,7 +273,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: new Date().toISOString(),
         };
         await setDoc(userDocRef, sanitizeForFirestore(studentProfile), { merge: true });
-        db.linkEntityAuthUid('STUDENT', studentDoc.id, user.uid);
         return studentProfile;
       }
     } catch (err) {

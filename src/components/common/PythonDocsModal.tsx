@@ -226,10 +226,10 @@ export const PythonDocsModal: React.FC<PythonDocsModalProps> = ({ isOpen, onClos
             <div className="space-y-3">
               <div className="flex items-center justify-between font-sans">
                 <span className="text-xs text-slate-400">
-                  InnoDB UTF8MB4 schema saved to <code className="text-indigo-400">backend_python/schema_mysql.sql</code>
+                  Relational InnoDB UTF8MB4 Schema Definition
                 </span>
                 <button
-                  onClick={() => copyToClipboard('source backend_python/schema_mysql.sql', 'schema_cmd')}
+                  onClick={() => copyToClipboard('source schema_mysql.sql', 'schema_cmd')}
                   className="px-3 py-1 rounded bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold"
                 >
                   {copiedText === 'schema_cmd' ? 'Copied Import Command' : 'Copy Import Command'}
@@ -356,7 +356,7 @@ def calculate_consecutive_late_penalties(records):
         {/* Footer */}
         <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-xs text-slate-500 font-sans">
           <span>
-            MySQL schema: <code className="bg-slate-200 px-1 py-0.5 rounded text-slate-800">backend_python/schema_mysql.sql</code> • Guide: <code className="bg-slate-200 px-1 py-0.5 rounded text-slate-800">RENDER_DEPLOY_GUIDE.md</code>
+            Database Architecture & Production Deployment Specification
           </span>
           <button
             onClick={onClose}

@@ -33,9 +33,26 @@ export const TeacherManualAttendance: React.FC<TeacherManualAttendanceProps> = (
   students,
   onRefresh,
 }) => {
-  // Only course offerings assigned to this teacher
-  const teacherAssignments = db.getTeacherAssignments().filter(ta => ta.teacherId === teacher.id);
-  const teacherOfferingIds = new Set(teacherAssignments.map(ta => ta.courseOfferingId));
+  // Helper to match teacher identity across both unique entity ID and teacherId code
+  const teacherIdMatches = (tid?: string) =>
+    Boolean(tid && teacher && (tid === teacher.id || tid === teacher.teacherId));
+
+  const teacherAssignments = db.getTeacherAssignments().filter(ta => teacherIdMatches(ta.teacherId));
+  const routines = db.getRoutines().filter(r => teacherIdMatches(r.teacherId));
+
+  const teacherOfferingIds = new Set<string>();
+  teacherAssignments.forEach(ta => teacherOfferingIds.add(ta.courseOfferingId));
+  routines.forEach(r => {
+    if (r.courseOfferingId) teacherOfferingIds.add(r.courseOfferingId);
+  });
+  if (teacher.authorizedCourseIds?.length) {
+    offerings.forEach(o => {
+      if (teacher.authorizedCourseIds.includes(o.courseId)) {
+        teacherOfferingIds.add(o.id);
+      }
+    });
+  }
+
   const authorizedOfferings = offerings.filter(o => teacherOfferingIds.has(o.id));
 
   const [selectedOfferingId, setSelectedOfferingId] = useState<string>(

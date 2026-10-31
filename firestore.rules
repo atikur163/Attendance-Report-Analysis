@@ -13,7 +13,7 @@ service cloud.firestore {
     }
 
     function isBootstrappedAdmin() {
-      return isSignedIn() && request.auth.token.email == 'it24026@mbstu.ac.bd';
+      return isSignedIn() && (request.auth.token.email == 'it24026@mbstu.ac.bd' || request.auth.token.email == 'sabbirstudy2002@gmail.com');
     }
 
     function hasUserDoc() {
@@ -48,7 +48,7 @@ service cloud.firestore {
     // Users can read own profile or Admins/Teachers can view user directories
     // Users can register their own profile, but cannot elevate themselves to ADMIN unless bootstrapped
     match /users/{userId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin() || isTeacher());
       allow create: if isSignedIn() && (
         (request.auth.uid == userId && (request.resource.data.role != 'ADMIN' || isBootstrappedAdmin())) ||
         isAdmin()
@@ -91,18 +91,10 @@ service cloud.firestore {
     }
 
     // 3. Teachers & Teacher Assignments
-    // Admins can manage all teacher accounts; Teachers can update their own linked credentials & profile
+    // Requirement 9: Ensure only authorized Admin users can create, edit, or delete teacher accounts
     match /teachers/{teacherId} {
       allow read: if isSignedIn();
-      allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (
-        isSignedIn() && (
-          resource.data.email == request.auth.token.email ||
-          resource.data.authUid == request.auth.uid ||
-          currentTeacherId() == teacherId ||
-          (hasUserDoc() && getUserDoc().email == resource.data.email)
-        )
-      );
+      allow create, update, delete: if isAdmin();
     }
 
     match /teacher_assignments/{assignmentId} {
@@ -111,17 +103,14 @@ service cloud.firestore {
     }
 
     // 4. Students & Student Enrollments
-    // Admins can manage all student accounts; Students can update their own linked credentials & profile
+    // Requirement 9: Ensure only authorized Admin users can create, edit, or delete student accounts
     match /students/{studentId} {
       allow read: if isSignedIn();
       allow create, delete: if isAdmin();
       allow update: if isAdmin() || (
-        isSignedIn() && (
-          currentStudentId() == studentId ||
-          resource.data.email == request.auth.token.email ||
-          resource.data.authUid == request.auth.uid ||
-          (hasUserDoc() && getUserDoc().email == resource.data.email)
-        )
+        isSignedIn() && currentStudentId() == studentId &&
+        // Students cannot change their academic standing, studentId, batchId, or departmentId
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['id', 'studentId', 'batchId', 'departmentId', 'status'])
       );
     }
 
@@ -144,7 +133,13 @@ service cloud.firestore {
     match /attendance_sessions/{sessionId} {
       allow read: if isSignedIn();
       allow create: if isAdmin() || isTeacher();
-      allow update: if isAdmin() || isTeacher();
+      allow update: if isAdmin() || (
+        isTeacher() && (
+          currentTeacherId() == '' ||
+          resource.data.teacherId == currentTeacherId() ||
+          resource.data.teacherId == request.auth.uid
+        )
+      );
       allow delete: if isAdmin();
     }
 
@@ -163,16 +158,14 @@ service cloud.firestore {
         request.resource.data.studentId == currentStudentId() ||
         exists(/databases/$(database)/documents/attendance_sessions/$(request.resource.data.sessionId))
       );
-      // Updates allowed for Teachers & Admins; Deletions strictly Admin
-      allow update: if isAdmin() || isTeacher();
-      allow delete: if isAdmin();
+      // Updates and deletions are restricted to Admin (Official corrections and audit logs)
+      allow update, delete: if isAdmin();
     }
 
     // 8. Attendance Corrections & Audit Logs
     match /attendance_corrections/{correctionId} {
       allow read: if isAdmin() || isTeacher();
-      allow create: if isAdmin() || isTeacher();
-      allow update, delete: if isAdmin();
+      allow write: if isAdmin();
     }
 
     match /audit_logs/{auditId} {

@@ -23,7 +23,7 @@ import { useAuth } from '../../context/AuthContext';
 import { QRService } from '../../services/qrService';
 import { NotificationService } from '../../services/notificationService';
 import { computeStudentCourseAnalytics } from '../../services/attendanceEngine';
-import { AttendanceSession, CourseOffering, Course, Teacher } from '../../types';
+import { AttendanceSession, CourseOffering, Course, Teacher, TeacherAssignment } from '../../types';
 import { getStatusBadgeClasses, getRiskBadgeClasses } from '../../utils/formatters';
 import { TeacherManualAttendance } from './TeacherManualAttendance';
 
@@ -63,6 +63,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     } else if (targetEmail) {
       currentTeacher = teachers.find(t => t.email.toLowerCase() === targetEmail);
     }
+    if (!currentTeacher && teachers.length > 0) {
+      currentTeacher = teachers[0];
+    }
   }
 
   if (!currentTeacher) {
@@ -94,16 +97,54 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     );
   }
 
-  // Teacher assignments & courses (Only assigned courses appear!)
-  const assignments = db.getTeacherAssignments().filter(ta => ta.teacherId === currentTeacher.id);
   const offerings = db.getCourseOfferings();
   const courses = db.getCourses();
-  const routines = db.getRoutines().filter(r => r.teacherId === currentTeacher.id);
+  const batches = db.getBatches();
   const allSessions = db.getAttendanceSessions();
   const allRecords = db.getAttendanceRecords();
   const allStudents = db.getStudents();
   const enrollments = db.getStudentEnrollments();
   const settings = db.getSettings();
+
+  // Helper to match teacher identity across both unique entity ID and teacherId code
+  const teacherIdMatches = (tid?: string) =>
+    Boolean(tid && currentTeacher && (tid === currentTeacher.id || tid === currentTeacher.teacherId));
+
+  // 1. Direct teacher assignment records
+  const directAssignments = db.getTeacherAssignments().filter(ta => teacherIdMatches(ta.teacherId));
+
+  // 2. Scheduled routines for this teacher
+  const routines = db.getRoutines().filter(r => teacherIdMatches(r.teacherId));
+
+  // 3. Resolve all course offering IDs assigned to this teacher (via TeacherAssignment, Routine, or Authorized Courses)
+  const assignedOfferingIds = new Set<string>();
+  directAssignments.forEach(ta => assignedOfferingIds.add(ta.courseOfferingId));
+  routines.forEach(r => {
+    if (r.courseOfferingId) assignedOfferingIds.add(r.courseOfferingId);
+  });
+  if (currentTeacher.authorizedCourseIds && currentTeacher.authorizedCourseIds.length > 0) {
+    offerings.forEach(o => {
+      if (currentTeacher.authorizedCourseIds.includes(o.courseId)) {
+        assignedOfferingIds.add(o.id);
+      }
+    });
+  }
+
+  // Combined assigned course offerings list
+  const assignedCourseOfferings = offerings.filter(o => assignedOfferingIds.has(o.id));
+
+  // Comprehensive assignments array (so all selectors have rich representation)
+  const assignments: TeacherAssignment[] = assignedCourseOfferings.map(off => {
+    const direct = directAssignments.find(da => da.courseOfferingId === off.id);
+    if (direct) return direct;
+    return {
+      id: `ta-syn-${currentTeacher.id}-${off.id}`,
+      teacherId: currentTeacher.id,
+      courseOfferingId: off.id,
+      role: 'PRIMARY' as const,
+      assignedAt: new Date().toISOString(),
+    };
+  });
 
   // Active session managed by this teacher
   const [activeSession, setActiveSession] = useState<AttendanceSession | null>(
@@ -337,56 +378,170 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       {/* TAB 1: LIVE ATTENDANCE & SCHEDULE */}
       {activeViewTab === 'live' && (
         <div className="space-y-8">
+          {/* MY ASSIGNED COURSES & OFFERINGS */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
+                <BookOpen className="w-4 h-4 text-indigo-600" />
+                <span>My Assigned Courses ({assignedCourseOfferings.length})</span>
+              </h3>
+              <span className="text-[11px] text-slate-400">
+                Courses allocated to you by Department & Academic Administration
+              </span>
+            </div>
+
+            {assignedCourseOfferings.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-6 text-center">
+                <BookOpen className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                <h4 className="font-bold text-slate-700 text-sm">No Courses Assigned Yet</h4>
+                <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                  You do not currently have any active course offerings assigned. When the administrator assigns a course to your faculty profile in Course Allocation, it will immediately appear here.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {assignedCourseOfferings.map(off => {
+                  const crs = courses.find(c => c.id === off.courseId);
+                  const batch = batches.find(b => b.id === off.batchId);
+                  const enrolledCount = enrollments.filter(
+                    e => e.courseOfferingId === off.id && e.status === 'ENROLLED'
+                  ).length;
+                  const progressPct = off.plannedClasses > 0
+                    ? Math.min(100, Math.round((off.conductedClasses / off.plannedClasses) * 100))
+                    : 0;
+
+                  return (
+                    <div
+                      key={off.id}
+                      className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between hover:border-indigo-300 transition-all hover:shadow-md"
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-xs text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100 font-mono">
+                            {crs?.code}
+                          </span>
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                            {crs?.type} • {crs?.credit} Cr
+                          </span>
+                        </div>
+
+                        <div>
+                          <h4 className="font-bold text-slate-900 text-sm leading-snug">{crs?.name}</h4>
+                          <p className="text-xs text-slate-500 mt-1">
+                            Cohort: <strong className="text-slate-700">{batch?.name || 'Assigned Cohort'}</strong> • Year {off.year}, Sem {off.semester} (Sec {off.section})
+                          </p>
+                        </div>
+
+                        {/* Class Progress Bar */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-slate-500">Conducted: <strong className="text-indigo-700">{off.conductedClasses}</strong> / {off.plannedClasses}</span>
+                            <span className="font-bold text-slate-700">{progressPct}%</span>
+                          </div>
+                          <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                            <div
+                              className="bg-indigo-600 h-full rounded-full transition-all duration-300"
+                              style={{ width: `${progressPct}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
+                          <span className="flex items-center space-x-1">
+                            <Users className="w-3.5 h-3.5 text-slate-400" />
+                            <span><strong>{enrolledCount}</strong> Students Enrolled</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Quick Action Buttons */}
+                      <div className="pt-4 mt-3 border-t border-slate-100 grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => {
+                            setSelectedOfferingId(off.id);
+                            setIsStartModalOpen(true);
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center justify-center space-x-1 shadow-xs transition"
+                          title="Start Dynamic QR or Face Recognition Kiosk"
+                        >
+                          <Play className="w-3 h-3 fill-current" />
+                          <span>Start Kiosk</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedCourseOfferingId(off.id);
+                            setActiveViewTab('analytics');
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs flex items-center justify-center space-x-1 transition"
+                          title="View student attendance analytics"
+                        >
+                          <Users className="w-3 h-3" />
+                          <span>Analytics</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {/* TODAY'S SCHEDULE & ROUTINE REMINDER */}
           <div className="space-y-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center space-x-1.5">
               <Calendar className="w-4 h-4 text-indigo-600" />
-              <span>My Timetable & Routine Schedule</span>
+              <span>My Timetable & Routine Schedule ({routines.length})</span>
             </h3>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {routines.map(rt => {
-            const off = offerings.find(o => o.id === rt.courseOfferingId);
-            const crs = off ? courses.find(c => c.id === off.courseId) : undefined;
-
-            return (
-              <div
-                key={rt.id}
-                className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col justify-between hover:border-indigo-300 transition-colors"
-              >
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-extrabold text-xs text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-100">
-                      {crs?.code}
-                    </span>
-                    <span className="text-[11px] font-semibold text-slate-500">
-                      {rt.dayOfWeek}
-                    </span>
-                  </div>
-                  <h4 className="font-bold text-slate-900 text-sm mt-2">{crs?.name}</h4>
-                  <p className="text-xs text-slate-500 mt-1 flex items-center space-x-1">
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>{rt.startTime} - {rt.endTime}</span>
-                  </p>
-                </div>
-
-                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                  <span>{rt.room}</span>
-                  <button
-                    onClick={() => {
-                      setSelectedOfferingId(rt.courseOfferingId);
-                      setIsStartModalOpen(true);
-                    }}
-                    className="text-indigo-600 hover:text-indigo-800 font-bold text-xs"
-                  >
-                    Launch Session →
-                  </button>
-                </div>
+            {routines.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-200 p-4 text-xs text-slate-500 italic">
+                No recurring timetable slots scheduled yet. You can launch ad-hoc attendance sessions directly from "My Assigned Courses" above.
               </div>
-            );
-          })}
-        </div>
-      </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {routines.map(rt => {
+                  const off = offerings.find(o => o.id === rt.courseOfferingId);
+                  const crs = off ? courses.find(c => c.id === off.courseId) : undefined;
+
+                  return (
+                    <div
+                      key={rt.id}
+                      className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col justify-between hover:border-indigo-300 transition-colors"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-xs text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-100">
+                            {crs?.code}
+                          </span>
+                          <span className="text-[11px] font-semibold text-slate-500">
+                            {rt.dayOfWeek}
+                          </span>
+                        </div>
+                        <h4 className="font-bold text-slate-900 text-sm mt-2">{crs?.name}</h4>
+                        <p className="text-xs text-slate-500 mt-1 flex items-center space-x-1">
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>{rt.startTime} - {rt.endTime}</span>
+                        </p>
+                      </div>
+
+                      <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                        <span>{rt.room}</span>
+                        <button
+                          onClick={() => {
+                            setSelectedOfferingId(rt.courseOfferingId);
+                            setIsStartModalOpen(true);
+                          }}
+                          className="text-indigo-600 hover:text-indigo-800 font-bold text-xs"
+                        >
+                          Launch Session →
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
       {/* ACTIVE ATTENDANCE SESSION KIOSK SCREEN (Section 14 & 16) */}
       {activeSession && (
