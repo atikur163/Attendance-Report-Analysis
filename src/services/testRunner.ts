@@ -341,6 +341,17 @@ export function runAllAutomatedTests(): {
     `success: ${crossEnrollCheck.success} (${crossEnrollCheck.message})`
   );
 
+  // Cross-Department Enrollment Isolation Check
+  // Student stu-01 (ICT) cannot be enrolled into CSE offering co-1101 even though both are Year 1 Sem 1
+  const crossDeptCheck = db.enrollStudent('stu-01', 'co-1101');
+  assert(
+    'Department Cohort Isolation',
+    'ICT student cannot be enrolled in CSE course offering (Department Mismatch)',
+    crossDeptCheck.success === false && crossDeptCheck.message.includes('Department Mismatch'),
+    'success: false (Department Mismatch)',
+    `success: ${crossDeptCheck.success} (${crossDeptCheck.message})`
+  );
+
   // 7. Duplicate Attendance Prevention (Section 14)
   const dupCheck = db.recordStudentAttendance({
     sessionId: 'sess-today-active',

@@ -32,6 +32,25 @@ interface ServerEmailLog {
 
 const serverEmailLogs: ServerEmailLog[] = [];
 
+let smtpAuthInvalid = false;
+let smtpAuthErrorMessage = '';
+
+// Helper to parse and format SMTP error messages (especially Gmail 535)
+function formatSmtpError(error: any): string {
+  const msg = error?.message || String(error);
+  if (
+    msg.includes('535') ||
+    msg.toLowerCase().includes('badcredentials') ||
+    msg.toLowerCase().includes('username and password not accepted')
+  ) {
+    return 'Gmail/SMTP Authentication Error (535): Username and password not accepted. For Google/Gmail accounts, you MUST generate and use a 16-character App Password (go to Google Account > Security > 2-Step Verification > App passwords) instead of your regular Google password. Also verify SMTP_USER matches your full email address.';
+  }
+  if (msg.includes('ETIMEDOUT') || msg.includes('ECONNREFUSED')) {
+    return `SMTP Connection Failed (${msg}): Unable to connect to SMTP host ${process.env.SMTP_HOST || ''}:${process.env.SMTP_PORT || 587}. Please check host, port, and firewall.`;
+  }
+  return msg;
+}
+
 // Helper to check SMTP configuration
 function getSmtpTransporter() {
   const host = process.env.SMTP_HOST;
@@ -51,6 +70,9 @@ function getSmtpTransporter() {
       user,
       pass,
     },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   });
 }
 
@@ -59,15 +81,18 @@ app.get('/api/email/status', async (req, res) => {
   const host = process.env.SMTP_HOST;
   const user = process.env.SMTP_USER;
   const from = process.env.EMAIL_FROM || user;
-  const isConfigured = Boolean(host && user && process.env.SMTP_PASS);
+  const isConfigured = Boolean(host && user && process.env.SMTP_PASS && !smtpAuthInvalid);
 
   res.json({
     configured: isConfigured,
+    authError: smtpAuthInvalid ? smtpAuthErrorMessage : null,
     host: host || 'Not configured',
     sender: from || 'Not configured',
     totalSent: serverEmailLogs.filter(l => l.status === 'SENT').length,
     totalLogs: serverEmailLogs.length,
-    instructions: isConfigured
+    instructions: smtpAuthInvalid
+      ? smtpAuthErrorMessage
+      : isConfigured
       ? 'SMTP email service is active and ready to deliver real emails.'
       : 'To enable real outbound SMTP delivery, set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and EMAIL_FROM in your environment secrets or .env file.',
   });
@@ -85,7 +110,6 @@ app.post('/api/email/send', async (req, res) => {
       text,
       html,
       dedupKey,
-      courseOfferingId,
     } = req.body;
 
     if (!to || !subject || (!text && !html)) {
@@ -108,9 +132,13 @@ app.post('/api/email/send', async (req, res) => {
     const transporter = getSmtpTransporter();
     const from = process.env.EMAIL_FROM || process.env.SMTP_USER || 'noreply@mbstu.ac.bd';
 
-    if (!transporter) {
-      // SMTP not configured on server
-      const configNotice = {
+    // If SMTP is not configured OR credentials have been rejected, queue gracefully without crashing
+    if (!transporter || smtpAuthInvalid) {
+      const reason = smtpAuthInvalid
+        ? smtpAuthErrorMessage
+        : 'SMTP credentials (SMTP_HOST, SMTP_USER, SMTP_PASS) not configured in server environment.';
+      
+      const configNotice: ServerEmailLog = {
         id: 'em-' + Date.now(),
         recipientEmail: to,
         recipientName: recipientName || to,
@@ -119,16 +147,16 @@ app.post('/api/email/send', async (req, res) => {
         subject,
         body: text || html || '',
         dedupKey: key,
-        status: 'CONFIG_REQUIRED' as const,
+        status: 'CONFIG_REQUIRED',
         sentAt: new Date().toISOString(),
-        error: 'SMTP credentials (SMTP_HOST, SMTP_USER, SMTP_PASS) not configured in server environment.',
+        error: reason,
       };
       serverEmailLogs.unshift(configNotice);
 
       return res.json({
         success: false,
         status: 'CONFIG_REQUIRED',
-        message: 'SMTP credentials not configured on server. Email logged and queued for retry once SMTP credentials are provided in .env.',
+        message: reason,
         log: configNotice,
       });
     }
@@ -166,7 +194,11 @@ app.post('/api/email/send', async (req, res) => {
       log: successLog,
     });
   } catch (error: any) {
-    console.error('SMTP Delivery error:', error);
+    const friendlyError = formatSmtpError(error);
+    if (friendlyError.includes('535') || friendlyError.includes('App Password')) {
+      smtpAuthInvalid = true;
+      smtpAuthErrorMessage = friendlyError;
+    }
     const failedLog: ServerEmailLog = {
       id: 'em-' + Date.now(),
       recipientEmail: req.body.to || 'unknown',
@@ -176,16 +208,17 @@ app.post('/api/email/send', async (req, res) => {
       subject: req.body.subject || 'Failed Email',
       body: req.body.text || '',
       dedupKey: req.body.dedupKey || `FAIL-${Date.now()}`,
-      status: 'FAILED',
+      status: 'CONFIG_REQUIRED',
       sentAt: new Date().toISOString(),
-      error: error.message || 'SMTP delivery failure',
+      error: friendlyError,
     };
     serverEmailLogs.unshift(failedLog);
 
-    return res.status(500).json({
+    return res.status(200).json({
       success: false,
-      status: 'FAILED',
-      error: error.message || 'Email delivery failure',
+      status: 'CONFIG_REQUIRED',
+      error: friendlyError,
+      message: friendlyError,
       log: failedLog,
     });
   }
@@ -225,6 +258,8 @@ app.post('/api/email/retry', async (req, res) => {
     targetLog.status = 'SENT';
     targetLog.error = undefined;
     targetLog.sentAt = new Date().toISOString();
+    smtpAuthInvalid = false;
+    smtpAuthErrorMessage = '';
 
     res.json({
       success: true,
@@ -233,9 +268,10 @@ app.post('/api/email/retry', async (req, res) => {
       message: `Retried and delivered to ${targetLog.recipientEmail}`,
     });
   } catch (err: any) {
+    const friendlyError = formatSmtpError(err);
     targetLog.status = 'FAILED';
-    targetLog.error = err.message;
-    res.status(500).json({ success: false, error: err.message });
+    targetLog.error = friendlyError;
+    res.status(200).json({ success: false, status: 'FAILED', error: friendlyError });
   }
 });
 
@@ -245,7 +281,7 @@ async function startServer() {
 
   if (!isProduction) {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, hmr: false },
       appType: 'spa',
     });
     app.use(vite.middlewares);

@@ -208,22 +208,7 @@ export const AdminStudentManagement: React.FC<AdminStudentManagementProps> = ({
 
     setIsSubmitting(true);
 
-    // Step 1: Create Firebase Auth Account via Secondary Admin Instance
-    const authResult = await createManagedAccount({
-      role: 'STUDENT',
-      email: cleanEmail,
-      temporaryPassword: addPassword,
-      displayName: cleanName,
-      entityId: cleanRoll,
-    });
-
-    if (!authResult.success) {
-      setAddError(authResult.error || 'Authentication account creation failed.');
-      setIsSubmitting(false);
-      return;
-    }
-
-    // Step 2: Store Student Entity in Database
+    // Step 1: Store Student Entity in Database
     const newStudent = db.addStudent({
       studentId: cleanRoll,
       name: cleanName,
@@ -236,8 +221,27 @@ export const AdminStudentManagement: React.FC<AdminStudentManagementProps> = ({
       section: addSection.trim(),
       status: 'ACTIVE',
       hasFaceProfile: false,
-      authUid: authResult.uid,
     });
+
+    // Step 2: Create Firebase Auth Account via Secondary Admin Instance with canonical student id
+    const authResult = await createManagedAccount({
+      role: 'STUDENT',
+      email: cleanEmail,
+      temporaryPassword: addPassword,
+      displayName: cleanName,
+      entityId: newStudent.id,
+    });
+
+    if (!authResult.success) {
+      db.deleteStudent(newStudent.id);
+      setAddError(authResult.error || 'Authentication account creation failed.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (authResult.uid) {
+      db.updateStudent(newStudent.id, { authUid: authResult.uid });
+    }
 
     // Step 3: Dispatch real account credentials email
     const dept = departments.find(d => d.id === addDeptId);
@@ -618,7 +622,14 @@ export const AdminStudentManagement: React.FC<AdminStudentManagementProps> = ({
                   <label className="block text-slate-700 font-semibold mb-1">Department</label>
                   <select
                     value={addDeptId}
-                    onChange={e => setAddDeptId(e.target.value)}
+                    onChange={e => {
+                      const newDept = e.target.value;
+                      setAddDeptId(newDept);
+                      const matching = batches.filter(b => b.departmentId === newDept);
+                      if (matching.length > 0) {
+                        setAddBatchId(matching[0].id);
+                      }
+                    }}
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 font-semibold"
                   >
                     {departments.map(d => (
@@ -638,7 +649,10 @@ export const AdminStudentManagement: React.FC<AdminStudentManagementProps> = ({
                     onChange={e => setAddBatchId(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 font-semibold"
                   >
-                    {batches.map(b => (
+                    {(batches.filter(b => b.departmentId === addDeptId).length > 0
+                      ? batches.filter(b => b.departmentId === addDeptId)
+                      : batches
+                    ).map(b => (
                       <option key={b.id} value={b.id}>
                         {b.name}
                       </option>
@@ -776,7 +790,14 @@ export const AdminStudentManagement: React.FC<AdminStudentManagementProps> = ({
                   <label className="block text-slate-700 font-semibold mb-1">Department</label>
                   <select
                     value={editDeptId}
-                    onChange={e => setEditDeptId(e.target.value)}
+                    onChange={e => {
+                      const newDept = e.target.value;
+                      setEditDeptId(newDept);
+                      const matching = batches.filter(b => b.departmentId === newDept);
+                      if (matching.length > 0) {
+                        setEditBatchId(matching[0].id);
+                      }
+                    }}
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 font-semibold"
                   >
                     {departments.map(d => (
@@ -793,7 +814,10 @@ export const AdminStudentManagement: React.FC<AdminStudentManagementProps> = ({
                     onChange={e => setEditBatchId(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl border border-slate-300 font-semibold"
                   >
-                    {batches.map(b => (
+                    {(batches.filter(b => b.departmentId === editDeptId).length > 0
+                      ? batches.filter(b => b.departmentId === editDeptId)
+                      : batches
+                    ).map(b => (
                       <option key={b.id} value={b.id}>
                         {b.name}
                       </option>

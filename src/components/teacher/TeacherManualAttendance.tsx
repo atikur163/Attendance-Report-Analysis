@@ -106,67 +106,39 @@ export const TeacherManualAttendance: React.FC<TeacherManualAttendanceProps> = (
     setSubmitSuccess(null);
 
     try {
-      const now = new Date();
-      // 1. Create a closed attendance session representing this manual lecture
-      const session: AttendanceSession = {
-        id: 'sess-manual-' + Date.now(),
+      const recordsToRecord = enrolledStudents.map(st => {
+        const stStatus = attendanceMap[st.id] || 'ABSENT';
+        return {
+          studentId: st.id,
+          status: stStatus as AttendanceStatus,
+          minutesLate: stStatus === 'LATE' ? settings.lateThresholdMinutes + 5 : 0,
+          notes: `Marked manually by ${teacher.name}`,
+        };
+      });
+
+      // 1. Record session, student records, and increment conducted classes in DB & Firestore
+      const { session } = db.recordManualSessionAttendance({
         courseOfferingId: selectedOffering.id,
         teacherId: teacher.id,
         date: sessionDate,
         startTime: sessionTime,
-        endTime: new Date(now.getTime() + 60 * 60 * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        attendanceMethod: 'QR',
-        status: 'CLOSED',
-        currentToken: 'MANUAL-SHEET',
-        tokenExpiresAt: now.toISOString(),
-        allowSelfCheckIn: false,
         notes: sessionNotes,
-        createdAt: now.toISOString(),
-        closedAt: now.toISOString(),
-      };
+        records: recordsToRecord,
+      });
 
-      (db as any).state.attendanceSessions.unshift(session);
-      (db as any).safeSetDoc(
-        (db as any).constructor.name ? undefined : undefined,
-        session
-      ); // handled by db service
-
-      // 2. Persist attendance records for each student in DB & Cloud Firestore
-      for (const st of enrolledStudents) {
-        const stStatus = attendanceMap[st.id] || 'ABSENT';
-        const rec: AttendanceRecord = {
-          id: 'rec-' + Date.now() + '-' + Math.floor(Math.random() * 90000 + 10000),
-          sessionId: session.id,
-          courseOfferingId: selectedOffering.id,
-          studentId: st.id,
-          timestamp: new Date().toISOString(),
-          method: 'MANUAL_ADMIN',
-          status: stStatus,
-          minutesLate: stStatus === 'LATE' ? settings.lateThresholdMinutes + 5 : 0,
-          notes: `Marked manually by ${teacher.name}`,
-        };
-
-        (db as any).state.attendanceRecords.push(rec);
-        // Persist to Firestore
-        (db as any).safeSetDoc(
-          (window as any).firestoreDoc
-            ? undefined
-            : undefined,
-          rec
-        );
+      // 2. Trigger automated < 60% warning evaluation (safely captured)
+      let warningInfo = '';
+      try {
+        const warningRes = await NotificationService.scanAndSendStudentRiskWarnings();
+        if (warningRes.warningsSent > 0) {
+          warningInfo = ` (${warningRes.warningsSent} risk warning email(s) dispatched)`;
+        }
+      } catch (warnErr) {
+        console.warn('Risk warnings scan notice:', warnErr);
       }
 
-      // 3. Increment conducted classes for the course offering
-      selectedOffering.conductedClasses = (selectedOffering.conductedClasses || 0) + 1;
-      db.saveLocalBackup();
-
-      // 4. Trigger automated < 60% warning evaluation
-      const warningRes = await NotificationService.scanAndSendStudentRiskWarnings();
-
       setSubmitSuccess(
-        `Manual attendance recorded for ${totalCount} students (${presentCount} Present, ${absentCount} Absent, ${lateCount} Late). Conducted classes updated to ${selectedOffering.conductedClasses}! ${
-          warningRes.warningsSent > 0 ? `Sent ${warningRes.warningsSent} low attendance warnings.` : ''
-        }`
+        `Manual attendance recorded for ${totalCount} students (${presentCount} Present, ${absentCount} Absent, ${lateCount} Late). Conducted classes updated to ${selectedOffering.conductedClasses}!${warningInfo}`
       );
 
       onRefresh();

@@ -13,6 +13,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { db } from '../../services/db';
+import { checkStudentCourseEligibility } from '../../services/enrollmentEngine';
 import { Student, Course, CourseOffering, Batch, StudentEnrollment } from '../../types';
 
 interface AdminEnrollmentManagementProps {
@@ -49,13 +50,13 @@ export const AdminEnrollmentManagement: React.FC<AdminEnrollmentManagementProps>
 
   const enrolledStudentIds = new Set(currentOfferingEnrollments.map(e => e.studentId));
 
-  // Eligible students (students matching batch, year, semester not yet enrolled)
+  const departments = db.getDepartments();
+
+  // Eligible students computed rigorously via academic enrollment engine
   const eligibleStudents = students.filter(s => {
     if (!currentOffering) return false;
-    const matchesBatch = s.batchId === currentOffering.batchId;
-    const matchesLevel = s.year === currentOffering.year && s.semester === currentOffering.semester;
-    const notEnrolled = !enrolledStudentIds.has(s.id);
-    return matchesBatch && matchesLevel && notEnrolled && s.status === 'ACTIVE';
+    const check = checkStudentCourseEligibility(s, currentOffering, currentCourse, enrollments, departments, batches);
+    return check.eligible;
   });
 
   // Filtered enrolled students for search

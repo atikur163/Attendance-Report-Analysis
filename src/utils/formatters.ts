@@ -41,3 +41,10 @@ export function getStatusBadgeClasses(status: string): { bg: string; text: strin
       return { bg: 'bg-rose-500/10', text: 'text-rose-600', border: 'border-rose-200' };
   }
 }
+
+export function formatOrdinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+

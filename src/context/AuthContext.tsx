@@ -79,25 +79,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Rejects deactivated accounts and accounts without university administration authorization.
    */
   const verifyAndLoadUserProfile = async (user: FirebaseUser): Promise<UserProfile> => {
+    const cleanEmail = (user.email || '').toLowerCase().trim();
     const userDocRef = doc(firestoreDb, 'users', user.uid);
     const userSnap = await getDoc(userDocRef);
 
-    if (userSnap.exists()) {
-      const data = userSnap.data() as UserProfile;
-
-      // Check if account is deactivated
-      if (data.status === 'INACTIVE') {
-        await signOut(auth);
-        throw new Error('Your university account has been deactivated. Please contact the Registrar / Administrator.');
-      }
-
-      if (data.role) {
-        return data;
-      }
-    }
-
-    // Special bootstrap exception for the system administrator
-    const cleanEmail = (user.email || '').toLowerCase().trim();
+    // Bootstrap administrator check
     if (cleanEmail === 'it24026@mbstu.ac.bd') {
       const adminProfile: UserProfile = {
         uid: user.uid,
@@ -111,7 +97,103 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return adminProfile;
     }
 
-    // 1. Check if an authorized teacher record exists in Firestore /teachers
+    if (userSnap.exists()) {
+      const data = userSnap.data() as UserProfile;
+
+      // Check if account is deactivated
+      if (data.status === 'INACTIVE') {
+        await signOut(auth);
+        throw new Error('Your university account has been deactivated. Please contact the Registrar / Administrator.');
+      }
+
+      if (data.role === 'ADMIN') {
+        return data;
+      }
+
+      // If existing doc has TEACHER role, resolve canonical teacher record
+      if (data.role === 'TEACHER') {
+        const matched =
+          db.findTeacher(cleanEmail) ||
+          db.findTeacher(user.uid) ||
+          db.findTeacher(data.teacherId);
+
+        if (matched) {
+          if (matched.status === 'INACTIVE') {
+            await signOut(auth);
+            throw new Error('Faculty account is deactivated. Contact University Administration.');
+          }
+          const updatedProfile: UserProfile = {
+            ...data,
+            uid: user.uid,
+            email: cleanEmail,
+            displayName: matched.name,
+            role: 'TEACHER',
+            teacherId: matched.id,
+            status: 'ACTIVE',
+          };
+          if (!matched.authUid || matched.authUid !== user.uid) {
+            db.updateTeacher(matched.id, { authUid: user.uid });
+          }
+          await setDoc(userDocRef, sanitizeForFirestore(updatedProfile), { merge: true });
+          return updatedProfile;
+        }
+      }
+
+      // If existing doc has STUDENT role, resolve canonical student record
+      if (data.role === 'STUDENT') {
+        const matched =
+          db.findStudent(cleanEmail) ||
+          db.findStudent(user.uid) ||
+          db.findStudent(data.studentId);
+
+        if (matched) {
+          if (matched.status === 'INACTIVE') {
+            await signOut(auth);
+            throw new Error('Student account is deactivated. Contact University Administration.');
+          }
+          const updatedProfile: UserProfile = {
+            ...data,
+            uid: user.uid,
+            email: cleanEmail,
+            displayName: matched.name,
+            role: 'STUDENT',
+            studentId: matched.id,
+            status: 'ACTIVE',
+          };
+          if (!matched.authUid || matched.authUid !== user.uid) {
+            db.updateStudent(matched.id, { authUid: user.uid });
+          }
+          await setDoc(userDocRef, sanitizeForFirestore(updatedProfile), { merge: true });
+          return updatedProfile;
+        }
+      }
+    }
+
+    // 1. Search Teacher records in memory
+    const matchedTeacher =
+      db.findTeacher(cleanEmail) ||
+      db.findTeacher(user.uid);
+
+    if (matchedTeacher) {
+      if (matchedTeacher.status === 'INACTIVE') {
+        await signOut(auth);
+        throw new Error('Teacher account is marked inactive. Contact University Administration.');
+      }
+      const teacherProfile: UserProfile = {
+        uid: user.uid,
+        email: cleanEmail,
+        displayName: matchedTeacher.name,
+        role: 'TEACHER',
+        teacherId: matchedTeacher.id,
+        status: 'ACTIVE',
+        createdAt: new Date().toISOString(),
+      };
+      db.updateTeacher(matchedTeacher.id, { authUid: user.uid });
+      await setDoc(userDocRef, sanitizeForFirestore(teacherProfile), { merge: true });
+      return teacherProfile;
+    }
+
+    // Firestore query fallback for teachers
     try {
       const teacherQ = query(
         collection(firestoreDb, 'teachers'),
@@ -139,10 +221,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return teacherProfile;
       }
     } catch (err) {
-      console.warn('Teacher lookup in Firestore skipped or failed:', err);
+      console.warn('Teacher lookup query note:', err);
     }
 
-    // 2. Check if an authorized student record exists in Firestore /students
+    // 2. Search Student records in memory
+    const matchedStudent =
+      db.findStudent(cleanEmail) ||
+      db.findStudent(user.uid);
+
+    if (matchedStudent) {
+      if (matchedStudent.status === 'INACTIVE') {
+        await signOut(auth);
+        throw new Error('Student account is marked inactive. Contact University Administration.');
+      }
+      const studentProfile: UserProfile = {
+        uid: user.uid,
+        email: cleanEmail,
+        displayName: matchedStudent.name,
+        role: 'STUDENT',
+        studentId: matchedStudent.id,
+        status: 'ACTIVE',
+        createdAt: new Date().toISOString(),
+      };
+      db.updateStudent(matchedStudent.id, { authUid: user.uid });
+      await setDoc(userDocRef, sanitizeForFirestore(studentProfile), { merge: true });
+      return studentProfile;
+    }
+
+    // Firestore query fallback for students
     try {
       const studentQ = query(
         collection(firestoreDb, 'students'),
@@ -170,51 +276,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return studentProfile;
       }
     } catch (err) {
-      console.warn('Student lookup in Firestore skipped or failed:', err);
-    }
-
-    // 3. Fallback check against in-memory state (seed records)
-    const matchedTeacher = db.getTeachers().find(t => t.email.toLowerCase() === cleanEmail);
-    if (matchedTeacher) {
-      if (matchedTeacher.status === 'INACTIVE') {
-        await signOut(auth);
-        throw new Error('Teacher account is marked inactive. Contact University Administration.');
-      }
-      const teacherProfile: UserProfile = {
-        uid: user.uid,
-        email: cleanEmail,
-        displayName: matchedTeacher.name,
-        role: 'TEACHER',
-        teacherId: matchedTeacher.id,
-        status: 'ACTIVE',
-        createdAt: new Date().toISOString(),
-      };
-      await setDoc(userDocRef, sanitizeForFirestore(teacherProfile), { merge: true });
-      return teacherProfile;
-    }
-
-    const matchedStudent = db.getStudents().find(s => s.email.toLowerCase() === cleanEmail);
-    if (matchedStudent) {
-      if (matchedStudent.status === 'INACTIVE') {
-        await signOut(auth);
-        throw new Error('Student account is marked inactive. Contact University Administration.');
-      }
-      const studentProfile: UserProfile = {
-        uid: user.uid,
-        email: cleanEmail,
-        displayName: matchedStudent.name,
-        role: 'STUDENT',
-        studentId: matchedStudent.id,
-        status: 'ACTIVE',
-        createdAt: new Date().toISOString(),
-      };
-      await setDoc(userDocRef, sanitizeForFirestore(studentProfile), { merge: true });
-      return studentProfile;
+      console.warn('Student lookup query note:', err);
     }
 
     // No authorization found in trusted server-side records
     await signOut(auth);
-    throw new Error('Access Denied: Your account is not registered in the university attendance system. Please contact the Registrar or Department Administrator.');
+    throw new Error('Your profile could not be found. Please contact the administrator.');
   };
 
   // Listen for redirect results on page load
@@ -284,9 +351,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         credential = await signInWithEmailAndPassword(auth, cleanEmail, pass);
       } catch (signInErr: any) {
         // Auto-provision demo accounts if testing credentials on fresh Firebase instance
-        const isDemoAdmin = cleanEmail === 'it24026@mbstu.ac.bd' && pass === 'Admin@1234';
-        const isDemoTeacher = cleanEmail === 'ahsan.habib@mbstu.ac.bd' && pass === 'Teacher@1234';
-        const isDemoStudent = cleanEmail === 'it24026.student@mbstu.ac.bd' && pass === 'Student@1234';
+        const normalized = cleanEmail.toLowerCase();
+        const isDemoAdmin = normalized === 'it24026@mbstu.ac.bd' && pass === 'Admin@1234';
+        const isDemoTeacher =
+          (normalized === 'ahsan.habib@mbstu.ac.bd' ||
+           normalized === 'nargisakter@mbstu.ac.bd' ||
+           normalized === 'it24026.teacher@mbstu.ac.bd') &&
+          pass === 'Teacher@1234';
+        const isDemoStudent =
+          (normalized === 'it24026.student@mbstu.ac.bd' ||
+           normalized === 'farhana.y@mbstu.ac.bd' ||
+           normalized === 'sabbir.h@mbstu.ac.bd') &&
+          pass === 'Student@1234';
 
         if ((isDemoAdmin || isDemoTeacher || isDemoStudent) && (signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential')) {
           credential = await createUserWithEmailAndPassword(auth, cleanEmail, pass);

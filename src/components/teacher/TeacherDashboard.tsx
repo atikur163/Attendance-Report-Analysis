@@ -18,6 +18,8 @@ import {
   Send,
 } from 'lucide-react';
 import { db } from '../../services/db';
+import { auth } from '../../services/firebase';
+import { useAuth } from '../../context/AuthContext';
 import { QRService } from '../../services/qrService';
 import { NotificationService } from '../../services/notificationService';
 import { computeStudentCourseAnalytics } from '../../services/attendanceEngine';
@@ -34,17 +36,60 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   teacherId,
   onRefresh,
 }) => {
+  const { currentUser, userProfile } = useAuth();
   const teachers = db.getTeachers();
-  const currentTeacher: Teacher | undefined = teachers.find(t => t.id === teacherId) || teachers[0];
+
+  const targetEmail = (userProfile?.email || currentUser?.email || '').toLowerCase().trim();
+  const targetUid = currentUser?.uid;
+
+  // Strict identity mapping:
+  // If user role is TEACHER: Must match authenticated email, authUid, or verified teacherId
+  // If user role is ADMIN: Can audit any teacher via teacherId prop
+  let currentTeacher: Teacher | undefined;
+  if (userProfile?.role === 'TEACHER') {
+    currentTeacher = teachers.find(
+      t =>
+        (targetEmail && t.email.toLowerCase() === targetEmail) ||
+        (targetUid && t.authUid === targetUid) ||
+        (userProfile.teacherId && (t.id === userProfile.teacherId || t.teacherId.toLowerCase() === userProfile.teacherId.toLowerCase()))
+    );
+  } else {
+    // Admin or supervisor preview mode
+    const effectiveTargetId = teacherId || userProfile?.teacherId;
+    if (effectiveTargetId) {
+      currentTeacher = teachers.find(
+        t => t.id === effectiveTargetId || t.teacherId.toLowerCase() === effectiveTargetId.toLowerCase()
+      );
+    } else if (targetEmail) {
+      currentTeacher = teachers.find(t => t.email.toLowerCase() === targetEmail);
+    }
+  }
 
   if (!currentTeacher) {
     return (
-      <div className="max-w-md mx-auto p-8 text-center bg-white rounded-2xl border border-slate-200 mt-8 shadow-xs">
-        <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
-        <h3 className="font-bold text-slate-800 text-base">Teacher Profile Not Found</h3>
-        <p className="text-xs text-slate-500 mt-1">
-          No teacher profile could be found for this account. Please contact the administrator.
+      <div className="max-w-md mx-auto p-8 text-center bg-white rounded-2xl border border-slate-200 mt-12 shadow-xs">
+        <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
+        <h3 className="font-bold text-slate-800 text-lg">Teacher Profile Not Found</h3>
+        <p className="text-sm text-slate-600 mt-1">
+          No faculty profile matching account <span className="font-semibold text-slate-900">{targetEmail || 'your credentials'}</span> was found in the system.
         </p>
+        <p className="text-xs text-slate-400 mt-2">
+          Please contact the university administrator to register or activate your faculty profile.
+        </p>
+        <div className="mt-6 flex justify-center gap-3">
+          <button
+            onClick={() => auth.signOut()}
+            className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition"
+          >
+            Sign Out & Switch Account
+          </button>
+          <button
+            onClick={onRefresh}
+            className="px-4 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-200 transition"
+          >
+            Retry Verification
+          </button>
+        </div>
       </div>
     );
   }
@@ -231,7 +276,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Teacher ID: <span className="font-mono font-semibold">{currentTeacher.teacherId}</span> • Department of CSE • {currentTeacher.email}
+              Teacher ID: <span className="font-mono font-semibold">{currentTeacher.teacherId}</span> • {db.getDepartments().find(d => d.id === currentTeacher.departmentId)?.name || 'Department of CSE'} • {currentTeacher.email}
             </p>
           </div>
         </div>

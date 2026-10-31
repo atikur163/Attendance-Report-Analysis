@@ -32,9 +32,9 @@ function AppContent() {
   const [isPythonDocsModalOpen, setIsPythonDocsModalOpen] = useState(false);
   const [, setRefreshTicker] = useState(0);
 
-  // Active student and teacher identities
-  const [activeStudentId, setActiveStudentId] = useState('stu-01');
-  const [activeTeacherId, setActiveTeacherId] = useState('tch-01');
+  // Active student and teacher identities (empty by default; resolved dynamically from verified user session)
+  const [activeStudentId, setActiveStudentId] = useState('');
+  const [activeTeacherId, setActiveTeacherId] = useState('');
 
   const students = db.getStudents();
   const teachers = db.getTeachers();
@@ -55,13 +55,33 @@ function AppContent() {
   useEffect(() => {
     if (userProfile?.role) {
       setCurrentRole(userProfile.role);
-      if (userProfile.role === 'TEACHER' && userProfile.teacherId) {
-        setActiveTeacherId(userProfile.teacherId);
-      } else if (userProfile.role === 'STUDENT' && userProfile.studentId) {
-        setActiveStudentId(userProfile.studentId);
+      if (userProfile.role === 'TEACHER') {
+        const matched =
+          db.findTeacher(userProfile.email) ||
+          (currentUser?.email ? db.findTeacher(currentUser.email) : undefined) ||
+          (currentUser?.uid ? db.findTeacher(currentUser.uid) : undefined) ||
+          db.findTeacher(userProfile.teacherId);
+        if (matched) {
+          setActiveTeacherId(matched.id);
+        }
+      } else if (userProfile.role === 'STUDENT') {
+        const matched =
+          db.findStudent(userProfile.email) ||
+          (currentUser?.email ? db.findStudent(currentUser.email) : undefined) ||
+          (currentUser?.uid ? db.findStudent(currentUser.uid) : undefined) ||
+          db.findStudent(userProfile.studentId);
+        if (matched) {
+          setActiveStudentId(matched.id);
+        }
+      } else if (userProfile.role === 'ADMIN') {
+        if (!activeTeacherId && teachers.length > 0) setActiveTeacherId(teachers[0].id);
+        if (!activeStudentId && students.length > 0) setActiveStudentId(students[0].id);
       }
+    } else {
+      setActiveTeacherId('');
+      setActiveStudentId('');
     }
-  }, [userProfile]);
+  }, [userProfile, currentUser, teachers.length, students.length]);
 
   const handleResetSeed = () => {
     if (window.confirm('Reset Cloud Firestore database to clean university seed state?')) {
@@ -180,12 +200,12 @@ function AppContent() {
             ) : userProfile.role === 'TEACHER' ? (
               // Teacher Locked Session
               <span className="font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
-                Faculty Workspace: {userProfile.displayName} ({teachers.find(t => t.id === activeTeacherId)?.designation || 'Faculty Member'})
+                Faculty Workspace: {db.findTeacher(activeTeacherId)?.name || userProfile.displayName} ({db.findTeacher(activeTeacherId)?.designation || 'Faculty Member'})
               </span>
             ) : (
               // Student Locked Session
               <span className="font-bold text-blue-800 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
-                Student Portal: {userProfile.displayName} ({students.find(s => s.id === activeStudentId)?.studentId || 'Enrolled Student'})
+                Student Portal: {db.findStudent(activeStudentId)?.name || userProfile.displayName} ({db.findStudent(activeStudentId)?.studentId || 'Enrolled Student'})
               </span>
             )}
           </div>

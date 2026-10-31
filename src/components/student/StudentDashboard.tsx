@@ -16,10 +16,13 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { db } from '../../services/db';
+import { auth } from '../../services/firebase';
+import { useAuth } from '../../context/AuthContext';
 import { computeStudentCourseAnalytics } from '../../services/attendanceEngine';
 import { QRService } from '../../services/qrService';
 import { CameraCaptureModal } from '../common/CameraCaptureModal';
-import { getRiskBadgeClasses, getStatusBadgeClasses, formatTimeAgo } from '../../utils/formatters';
+import { getRiskBadgeClasses, getStatusBadgeClasses, formatTimeAgo, formatOrdinal } from '../../utils/formatters';
+import { Student } from '../../types';
 
 interface StudentDashboardProps {
   studentId: string;
@@ -32,6 +35,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   onRefresh,
   isMobileFrame = false,
 }) => {
+  const { currentUser, userProfile } = useAuth();
   const [activeTab, setActiveTab] = useState<'courses' | 'history' | 'biometrics'>('courses');
   const [isFaceModalOpen, setIsFaceModalOpen] = useState(false);
   const [selectedSessionForFace, setSelectedSessionForFace] = useState<string | null>(null);
@@ -42,22 +46,66 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   const [manualTokenInput, setManualTokenInput] = useState('');
   const [scanFeedback, setScanFeedback] = useState<{ success: boolean; message: string } | null>(null);
 
-  const student = db.getStudents().find(s => s.id === studentId) || db.getStudents()[0];
+  const students = db.getStudents();
+  const targetEmail = (userProfile?.email || currentUser?.email || '').toLowerCase().trim();
+  const targetUid = currentUser?.uid;
+
+  // Strict identity mapping:
+  // If user role is STUDENT: Must match authenticated email, authUid, or verified studentId
+  // If user role is ADMIN: Can audit any student via studentId prop
+  let student: Student | undefined;
+  if (userProfile?.role === 'STUDENT') {
+    student = students.find(
+      s =>
+        (targetEmail && s.email.toLowerCase() === targetEmail) ||
+        (targetUid && s.authUid === targetUid) ||
+        (userProfile.studentId && (s.id === userProfile.studentId || s.studentId.toLowerCase() === userProfile.studentId.toLowerCase()))
+    );
+  } else {
+    // Admin or supervisor preview mode
+    const effectiveTargetId = studentId || userProfile?.studentId;
+    if (effectiveTargetId) {
+      student = students.find(
+        s => s.id === effectiveTargetId || s.studentId.toLowerCase() === effectiveTargetId.toLowerCase()
+      );
+    } else if (targetEmail) {
+      student = students.find(s => s.email.toLowerCase() === targetEmail);
+    }
+  }
+
   const enrollments = student ? db.getStudentEnrollments().filter(e => e.studentId === student.id && e.status === 'ENROLLED') : [];
   const courseOfferings = db.getCourseOfferings();
   const courses = db.getCourses();
   const allRecords = student ? db.getAttendanceRecords().filter(r => r.studentId === student.id) : [];
   const settings = db.getSettings();
   const faceProfile = student ? db.getFaceProfile(student.id) : null;
+  const studentDept = student ? db.getDepartments().find(d => d.id === student.departmentId) : undefined;
 
   if (!student) {
     return (
-      <div className="max-w-md mx-auto p-8 text-center bg-white rounded-2xl border border-slate-200 mt-8 shadow-xs">
-        <AlertCircle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
-        <h3 className="font-bold text-slate-800 text-base">Student Profile Not Found</h3>
-        <p className="text-xs text-slate-500 mt-1">
-          No student profile could be found for this account. Please contact the administrator.
+      <div className="max-w-md mx-auto p-8 text-center bg-white rounded-2xl border border-slate-200 mt-12 shadow-xs">
+        <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
+        <h3 className="font-bold text-slate-800 text-lg">Student Profile Not Found</h3>
+        <p className="text-sm text-slate-600 mt-1">
+          No student profile matching account <span className="font-semibold text-slate-900">{targetEmail || 'your credentials'}</span> was found in the system.
         </p>
+        <p className="text-xs text-slate-400 mt-2">
+          Please contact the department registrar or administrator to enroll your student profile.
+        </p>
+        <div className="mt-6 flex justify-center gap-3">
+          <button
+            onClick={() => auth.signOut()}
+            className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition"
+          >
+            Sign Out & Switch Account
+          </button>
+          <button
+            onClick={onRefresh}
+            className="px-4 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-200 transition"
+          >
+            Retry Verification
+          </button>
+        </div>
       </div>
     );
   }
@@ -173,7 +221,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 </span>
               </div>
               <p className="text-xs text-indigo-200/80 mt-0.5">
-                {student.year}st Year, {student.semester}st Semester • Dept of CSE • Section {student.section}
+                {formatOrdinal(student.year)} Year, {formatOrdinal(student.semester)} Semester • Dept of {studentDept?.code || 'CSE'} • Section {student.section}
               </p>
             </div>
           </div>

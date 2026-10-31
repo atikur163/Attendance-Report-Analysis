@@ -135,9 +135,11 @@ export const AdminCourseManagement: React.FC<AdminCourseManagementProps> = ({
     // 2. Optionally create course offering for current batch
     if (autoCreateOffering) {
       const currentSession = sessions.find(s => s.isCurrent) || sessions[0];
-      const matchingBatch = batches.find(
-        b => b.departmentId === departmentId && b.currentYear === Number(year) && b.currentSemester === Number(semester)
-      ) || batches[0];
+      const deptBatches = db.getBatchesByDepartment(departmentId);
+      const matchingBatch =
+        deptBatches.find(b => b.currentYear === Number(year) && b.currentSemester === Number(semester)) ||
+        deptBatches[0] ||
+        db.ensureBatchesForDepartment(departmentId)[0];
 
       if (currentSession && matchingBatch) {
         db.addCourseOffering({

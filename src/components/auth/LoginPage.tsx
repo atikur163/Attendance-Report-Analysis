@@ -265,7 +265,7 @@ export const LoginPage: React.FC = () => {
               <span className="text-[10px] text-slate-500 font-mono">1-Click Credentials</span>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={() => handleQuickFill('it24026@mbstu.ac.bd', 'Admin@1234')}
@@ -280,14 +280,38 @@ export const LoginPage: React.FC = () => {
 
               <button
                 type="button"
+                onClick={() => handleQuickFill('nargisakter@mbstu.ac.bd', 'Teacher@1234')}
+                className="p-2 rounded-xl bg-pink-500/10 border border-pink-500/20 hover:bg-pink-500/20 text-pink-300 text-left transition-colors"
+              >
+                <div className="flex items-center space-x-1 font-bold text-[11px]">
+                  <UserCheck className="w-3 h-3 text-pink-400" />
+                  <span>Prof. Nargis</span>
+                </div>
+                <div className="text-[9px] text-slate-400 truncate mt-0.5">TCH-103 Faculty</div>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => handleQuickFill('ahsan.habib@mbstu.ac.bd', 'Teacher@1234')}
                 className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 text-emerald-300 text-left transition-colors"
               >
                 <div className="flex items-center space-x-1 font-bold text-[11px]">
                   <UserCheck className="w-3 h-3 text-emerald-400" />
-                  <span>Teacher</span>
+                  <span>Dr. Ahsan</span>
                 </div>
-                <div className="text-[9px] text-slate-400 truncate mt-0.5">Faculty Head</div>
+                <div className="text-[9px] text-slate-400 truncate mt-0.5">TCH-101 Faculty</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickFill('farhana.y@mbstu.ac.bd', 'Student@1234')}
+                className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 hover:bg-cyan-500/20 text-cyan-300 text-left transition-colors"
+              >
+                <div className="flex items-center space-x-1 font-bold text-[11px]">
+                  <GraduationCap className="w-3 h-3 text-cyan-400" />
+                  <span>Farhana</span>
+                </div>
+                <div className="text-[9px] text-slate-400 truncate mt-0.5">CSE-26002 (stu-02)</div>
               </button>
 
               <button
@@ -297,9 +321,9 @@ export const LoginPage: React.FC = () => {
               >
                 <div className="flex items-center space-x-1 font-bold text-[11px]">
                   <GraduationCap className="w-3 h-3 text-purple-400" />
-                  <span>Student</span>
+                  <span>Tanvir</span>
                 </div>
-                <div className="text-[9px] text-slate-400 truncate mt-0.5">IT-24026</div>
+                <div className="text-[9px] text-slate-400 truncate mt-0.5">IT-24026 (stu-01)</div>
               </button>
             </div>
           </div>

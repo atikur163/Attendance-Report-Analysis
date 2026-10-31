@@ -213,22 +213,7 @@ export const AdminTeacherManagement: React.FC<AdminTeacherManagementProps> = ({
 
     setIsSubmitting(true);
 
-    // Step 1: Create Firebase Auth Account via Privileged Secondary Helper
-    const authResult = await createManagedAccount({
-      role: 'TEACHER',
-      email: cleanEmail,
-      temporaryPassword: addPassword,
-      displayName: cleanName,
-      entityId: cleanId,
-    });
-
-    if (!authResult.success) {
-      setAddError(authResult.error || 'Authentication account creation failed.');
-      setIsSubmitting(false);
-      return;
-    }
-
-    // Step 2: Save Teacher Entity Profile in Database
+    // Step 1: Save Teacher Entity Profile in Database
     const newTeacher = db.addTeacher({
       teacherId: cleanId,
       name: cleanName,
@@ -238,8 +223,27 @@ export const AdminTeacherManagement: React.FC<AdminTeacherManagementProps> = ({
       phone: addPhone.trim() || undefined,
       status: 'ACTIVE',
       authorizedCourseIds: addAuthorizedCourseIds,
-      authUid: authResult.uid,
     });
+
+    // Step 2: Create Firebase Auth Account via Privileged Secondary Helper with canonical teacher id
+    const authResult = await createManagedAccount({
+      role: 'TEACHER',
+      email: cleanEmail,
+      temporaryPassword: addPassword,
+      displayName: cleanName,
+      entityId: newTeacher.id,
+    });
+
+    if (!authResult.success) {
+      db.deleteTeacher(newTeacher.id);
+      setAddError(authResult.error || 'Authentication account creation failed.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (authResult.uid) {
+      db.updateTeacher(newTeacher.id, { authUid: authResult.uid });
+    }
 
     // Step 3: Send real email notification with account credentials, ID, assigned courses, and routine schedule
     const assignedCourses = courses.filter(c => addAuthorizedCourseIds.includes(c.id));

@@ -317,6 +317,25 @@ export const AdminEmailAndRiskManagement: React.FC<AdminEmailAndRiskManagementPr
         </div>
       </div>
 
+      {emailLogs.some(l => l.status === 'FAILED' && (l.error?.includes('535') || l.error?.includes('App Password') || l.error?.includes('Password not accepted'))) && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs text-amber-900 space-y-2">
+          <div className="flex items-center space-x-2 font-bold text-amber-900">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>Gmail / SMTP Authentication Notice (Error 535: Invalid Login)</span>
+          </div>
+          <p className="text-amber-800 leading-relaxed">
+            Google SMTP rejected the password provided in your environment. Google accounts do not allow standard passwords for third-party SMTP access; they require a dedicated 16-character <strong>App Password</strong>:
+          </p>
+          <ol className="list-decimal list-inside space-y-1 text-amber-900 font-medium pl-1">
+            <li>Go to your Google Account at <strong>myaccount.google.com/security</strong>.</li>
+            <li>Ensure <strong>2-Step Verification</strong> is enabled.</li>
+            <li>Navigate to <strong>App passwords</strong> (search "App passwords" in the Google Account search bar).</li>
+            <li>Generate an app password for <strong>UniAttend</strong> and copy the 16-character code (e.g. <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">abcd efgh ijkl mnop</code>).</li>
+            <li>Set <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">SMTP_PASS</code> in your environment secrets or .env file to this 16-character code (without spaces) and <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">SMTP_USER</code> to your full Gmail address.</li>
+          </ol>
+        </div>
+      )}
+
       {actionNotice && (
         <div
           className={`p-4 rounded-xl text-xs font-medium flex items-center space-x-2.5 ${

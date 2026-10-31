@@ -29,6 +29,7 @@ import {
   UserRole,
 } from '../types';
 import { DEFAULT_SYSTEM_SETTINGS } from './attendanceEngine';
+import { checkStudentCourseEligibility } from './enrollmentEngine';
 import {
   auth,
   firestoreDb,
@@ -73,7 +74,7 @@ export interface SystemDatabaseState {
   settings: SystemSettings;
 }
 
-// Initial University Seed Data
+// Initial University Seed Data: Multi-Department Academic Structure (CSE, ICT, EEE)
 const INITIAL_STATE: SystemDatabaseState = {
   departments: [
     { id: 'dept-cse', code: 'CSE', name: 'Computer Science and Engineering', building: 'Engineering Complex Bldg 1' },
@@ -85,12 +86,26 @@ const INITIAL_STATE: SystemDatabaseState = {
     { id: 'sess-2024-2025', name: '2024-2025', isCurrent: false },
   ],
   batches: [
-    { id: 'batch-2026', name: 'Batch 2026 (1st Year)', startYear: 2026, departmentId: 'dept-cse', currentYear: 1, currentSemester: 1 },
-    { id: 'batch-2025', name: 'Batch 2025 (2nd Year)', startYear: 2025, departmentId: 'dept-cse', currentYear: 2, currentSemester: 1 },
-    { id: 'batch-2024', name: 'Batch 2024 (3rd Year)', startYear: 2024, departmentId: 'dept-cse', currentYear: 3, currentSemester: 1 },
-    { id: 'batch-2023', name: 'Batch 2023 (4th Year)', startYear: 2023, departmentId: 'dept-cse', currentYear: 4, currentSemester: 1 },
+    // CSE Cohorts
+    { id: 'batch-2026', name: 'Batch 2026 (1st Year - CSE)', startYear: 2026, departmentId: 'dept-cse', currentYear: 1, currentSemester: 1 },
+    { id: 'batch-2025', name: 'Batch 2025 (2nd Year - CSE)', startYear: 2025, departmentId: 'dept-cse', currentYear: 2, currentSemester: 1 },
+    { id: 'batch-2024', name: 'Batch 2024 (3rd Year - CSE)', startYear: 2024, departmentId: 'dept-cse', currentYear: 3, currentSemester: 1 },
+    { id: 'batch-2023', name: 'Batch 2023 (4th Year - CSE)', startYear: 2023, departmentId: 'dept-cse', currentYear: 4, currentSemester: 1 },
+
+    // ICT Cohorts
+    { id: 'batch-ict-2026', name: 'Batch 2026 (1st Year - ICT)', startYear: 2026, departmentId: 'dept-ict', currentYear: 1, currentSemester: 1 },
+    { id: 'batch-ict-2025', name: 'Batch 2025 (2nd Year - ICT)', startYear: 2025, departmentId: 'dept-ict', currentYear: 2, currentSemester: 1 },
+    { id: 'batch-ict-2024', name: 'Batch 2024 (3rd Year - ICT)', startYear: 2024, departmentId: 'dept-ict', currentYear: 3, currentSemester: 1 },
+    { id: 'batch-ict-2023', name: 'Batch 2023 (4th Year - ICT)', startYear: 2023, departmentId: 'dept-ict', currentYear: 4, currentSemester: 1 },
+
+    // EEE Cohorts
+    { id: 'batch-eee-2026', name: 'Batch 2026 (1st Year - EEE)', startYear: 2026, departmentId: 'dept-eee', currentYear: 1, currentSemester: 1 },
+    { id: 'batch-eee-2025', name: 'Batch 2025 (2nd Year - EEE)', startYear: 2025, departmentId: 'dept-eee', currentYear: 2, currentSemester: 1 },
+    { id: 'batch-eee-2024', name: 'Batch 2024 (3rd Year - EEE)', startYear: 2024, departmentId: 'dept-eee', currentYear: 3, currentSemester: 1 },
+    { id: 'batch-eee-2023', name: 'Batch 2023 (4th Year - EEE)', startYear: 2023, departmentId: 'dept-eee', currentYear: 4, currentSemester: 1 },
   ],
   courses: [
+    // CSE Department Courses
     { id: 'c-1101', code: 'CSE-1101', name: 'Structured Programming Language', credit: 3.0, type: 'THEORY', departmentId: 'dept-cse', year: 1, semester: 1, status: 'ACTIVE' },
     { id: 'c-1102', code: 'CSE-1102', name: 'Structured Programming Lab', credit: 1.5, type: 'LAB', departmentId: 'dept-cse', year: 1, semester: 1, status: 'ACTIVE' },
     { id: 'c-1103', code: 'MAT-1103', name: 'Differential and Integral Calculus', credit: 3.0, type: 'THEORY', departmentId: 'dept-cse', year: 1, semester: 1, status: 'ACTIVE' },
@@ -100,12 +115,33 @@ const INITIAL_STATE: SystemDatabaseState = {
     { id: 'c-2103', code: 'CSE-2103', name: 'Object Oriented Programming', credit: 3.0, type: 'THEORY', departmentId: 'dept-cse', year: 2, semester: 1, status: 'ACTIVE' },
     { id: 'c-3101', code: 'CSE-3101', name: 'Database Management Systems', credit: 3.0, type: 'THEORY', departmentId: 'dept-cse', year: 3, semester: 1, status: 'ACTIVE' },
     { id: 'c-3102', code: 'CSE-3102', name: 'Database Systems Lab', credit: 1.5, type: 'LAB', departmentId: 'dept-cse', year: 3, semester: 1, status: 'ACTIVE' },
+
+    // ICT Department Courses
+    { id: 'c-ict-1101', code: 'ICT-1101', name: 'Introduction to Information Technology', credit: 3.0, type: 'THEORY', departmentId: 'dept-ict', year: 1, semester: 1, status: 'ACTIVE' },
+    { id: 'c-ict-1102', code: 'ICT-1102', name: 'Information Technology Lab', credit: 1.5, type: 'LAB', departmentId: 'dept-ict', year: 1, semester: 1, status: 'ACTIVE' },
+    { id: 'c-ict-2101', code: 'ICT-2101', name: 'Data Communication and Computer Networks', credit: 3.0, type: 'THEORY', departmentId: 'dept-ict', year: 2, semester: 1, status: 'ACTIVE' },
+
+    // EEE Department Courses
+    { id: 'c-eee-1101', code: 'EEE-1101', name: 'Electrical Circuit Analysis I', credit: 3.0, type: 'THEORY', departmentId: 'dept-eee', year: 1, semester: 1, status: 'ACTIVE' },
+    { id: 'c-eee-1102', code: 'EEE-1102', name: 'Circuit Analysis Lab', credit: 1.5, type: 'LAB', departmentId: 'dept-eee', year: 1, semester: 1, status: 'ACTIVE' },
   ],
   courseOfferings: [
+    // CSE Offerings
     { id: 'co-1101', courseId: 'c-1101', departmentId: 'dept-cse', academicSessionId: 'sess-2025-2026', year: 1, semester: 1, batchId: 'batch-2026', section: 'A', plannedClasses: 35, conductedClasses: 22, status: 'ACTIVE' },
     { id: 'co-1102', courseId: 'c-1102', departmentId: 'dept-cse', academicSessionId: 'sess-2025-2026', year: 1, semester: 1, batchId: 'batch-2026', section: 'A', plannedClasses: 14, conductedClasses: 9, status: 'ACTIVE' },
     { id: 'co-1103', courseId: 'c-1103', departmentId: 'dept-cse', academicSessionId: 'sess-2025-2026', year: 1, semester: 1, batchId: 'batch-2026', section: 'A', plannedClasses: 35, conductedClasses: 20, status: 'ACTIVE' },
     { id: 'co-1105', courseId: 'c-1105', departmentId: 'dept-cse', academicSessionId: 'sess-2025-2026', year: 1, semester: 1, batchId: 'batch-2026', section: 'A', plannedClasses: 35, conductedClasses: 21, status: 'ACTIVE' },
+    { id: 'co-2101', courseId: 'c-2101', departmentId: 'dept-cse', academicSessionId: 'sess-2025-2026', year: 2, semester: 1, batchId: 'batch-2025', section: 'A', plannedClasses: 35, conductedClasses: 18, status: 'ACTIVE' },
+    { id: 'co-2103', courseId: 'c-2103', departmentId: 'dept-cse', academicSessionId: 'sess-2025-2026', year: 2, semester: 1, batchId: 'batch-2025', section: 'A', plannedClasses: 35, conductedClasses: 20, status: 'ACTIVE' },
+
+    // ICT Offerings
+    { id: 'co-ict-1101', courseId: 'c-ict-1101', departmentId: 'dept-ict', academicSessionId: 'sess-2025-2026', year: 1, semester: 1, batchId: 'batch-ict-2026', section: 'A', plannedClasses: 35, conductedClasses: 18, status: 'ACTIVE' },
+    { id: 'co-ict-1102', courseId: 'c-ict-1102', departmentId: 'dept-ict', academicSessionId: 'sess-2025-2026', year: 1, semester: 1, batchId: 'batch-ict-2026', section: 'A', plannedClasses: 14, conductedClasses: 8, status: 'ACTIVE' },
+    { id: 'co-ict-2101', courseId: 'c-ict-2101', departmentId: 'dept-ict', academicSessionId: 'sess-2025-2026', year: 2, semester: 1, batchId: 'batch-ict-2025', section: 'A', plannedClasses: 35, conductedClasses: 16, status: 'ACTIVE' },
+
+    // EEE Offerings
+    { id: 'co-eee-1101', courseId: 'c-eee-1101', departmentId: 'dept-eee', academicSessionId: 'sess-2025-2026', year: 1, semester: 1, batchId: 'batch-eee-2026', section: 'A', plannedClasses: 35, conductedClasses: 19, status: 'ACTIVE' },
+    { id: 'co-eee-1102', courseId: 'c-eee-1102', departmentId: 'dept-eee', academicSessionId: 'sess-2025-2026', year: 1, semester: 1, batchId: 'batch-eee-2026', section: 'A', plannedClasses: 14, conductedClasses: 7, status: 'ACTIVE' },
   ],
   teachers: [
     {
@@ -130,10 +166,47 @@ const INITIAL_STATE: SystemDatabaseState = {
       status: 'ACTIVE',
       authorizedCourseIds: ['c-3101', 'c-3102', 'c-2101', 'c-2102'],
     },
+    {
+      id: 'tch-03',
+      teacherId: 'TCH-103',
+      name: 'Professor Dr. Nargis Akter',
+      email: 'nargisakter@mbstu.ac.bd',
+      departmentId: 'dept-cse',
+      designation: 'Professor',
+      phone: '+880 1733-445566',
+      status: 'ACTIVE',
+      authorizedCourseIds: ['c-1103', 'c-2101', 'c-2103'],
+    },
+    {
+      id: 'tch-04',
+      teacherId: 'TCH-201',
+      name: 'Dr. Kazi Imran',
+      email: 'kazi.imran@mbstu.ac.bd',
+      departmentId: 'dept-ict',
+      designation: 'Associate Professor & Chairman',
+      phone: '+880 1744-556677',
+      status: 'ACTIVE',
+      authorizedCourseIds: ['c-ict-1101', 'c-ict-2101'],
+    },
+    {
+      id: 'tch-05',
+      teacherId: 'TCH-301',
+      name: 'Dr. Tariqul Islam',
+      email: 'tariqul.eee@mbstu.ac.bd',
+      departmentId: 'dept-eee',
+      designation: 'Professor & Head',
+      phone: '+880 1755-667788',
+      status: 'ACTIVE',
+      authorizedCourseIds: ['c-eee-1101', 'c-eee-1102'],
+    },
   ],
   teacherAssignments: [
     { id: 'ta-01', courseOfferingId: 'co-1101', teacherId: 'tch-01', role: 'PRIMARY', assignedAt: '2026-08-01' },
     { id: 'ta-02', courseOfferingId: 'co-1102', teacherId: 'tch-01', role: 'PRIMARY', assignedAt: '2026-08-01' },
+    { id: 'ta-03', courseOfferingId: 'co-2103', teacherId: 'tch-03', role: 'PRIMARY', assignedAt: '2026-08-01' },
+    { id: 'ta-04', courseOfferingId: 'co-2101', teacherId: 'tch-03', role: 'PRIMARY', assignedAt: '2026-08-01' },
+    { id: 'ta-05', courseOfferingId: 'co-ict-1101', teacherId: 'tch-04', role: 'PRIMARY', assignedAt: '2026-08-01' },
+    { id: 'ta-06', courseOfferingId: 'co-eee-1101', teacherId: 'tch-05', role: 'PRIMARY', assignedAt: '2026-08-01' },
   ],
   students: [
     {
@@ -141,11 +214,11 @@ const INITIAL_STATE: SystemDatabaseState = {
       studentId: 'IT-24026',
       name: 'Tanvir Islam',
       email: 'it24026.student@mbstu.ac.bd',
-      departmentId: 'dept-cse',
+      departmentId: 'dept-ict',
       academicSessionId: 'sess-2025-2026',
       year: 1,
       semester: 1,
-      batchId: 'batch-2026',
+      batchId: 'batch-ict-2026',
       section: 'A',
       status: 'ACTIVE',
       hasFaceProfile: true,
@@ -181,12 +254,58 @@ const INITIAL_STATE: SystemDatabaseState = {
       hasFaceProfile: false,
       avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=160&q=80',
     },
+    {
+      id: 'stu-04',
+      studentId: 'IT-25010',
+      name: 'Labib Ahmed',
+      email: 'labib.it@mbstu.ac.bd',
+      departmentId: 'dept-ict',
+      academicSessionId: 'sess-2025-2026',
+      year: 2,
+      semester: 1,
+      batchId: 'batch-ict-2025',
+      section: 'A',
+      status: 'ACTIVE',
+      hasFaceProfile: false,
+      avatarUrl: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=160&q=80',
+    },
+    {
+      id: 'stu-05',
+      studentId: 'EEE-26001',
+      name: 'Amina Khatun',
+      email: 'amina.eee@mbstu.ac.bd',
+      departmentId: 'dept-eee',
+      academicSessionId: 'sess-2025-2026',
+      year: 1,
+      semester: 1,
+      batchId: 'batch-eee-2026',
+      section: 'A',
+      status: 'ACTIVE',
+      hasFaceProfile: false,
+      avatarUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=160&q=80',
+    },
   ],
   studentEnrollments: [
-    { id: 'enr-01', studentId: 'stu-01', courseOfferingId: 'co-1101', enrolledAt: '2026-08-05', status: 'ENROLLED' },
-    { id: 'enr-02', studentId: 'stu-01', courseOfferingId: 'co-1102', enrolledAt: '2026-08-05', status: 'ENROLLED' },
-    { id: 'enr-03', studentId: 'stu-01', courseOfferingId: 'co-1103', enrolledAt: '2026-08-05', status: 'ENROLLED' },
-    { id: 'enr-04', studentId: 'stu-01', courseOfferingId: 'co-1105', enrolledAt: '2026-08-05', status: 'ENROLLED' },
+    // Tanvir Islam (ICT Y1S1)
+    { id: 'enr-01', studentId: 'stu-01', courseOfferingId: 'co-ict-1101', enrolledAt: '2026-08-05', status: 'ENROLLED' },
+    { id: 'enr-02', studentId: 'stu-01', courseOfferingId: 'co-ict-1102', enrolledAt: '2026-08-05', status: 'ENROLLED' },
+
+    // Farhana Yasmin (CSE Y1S1)
+    { id: 'enr-05', studentId: 'stu-02', courseOfferingId: 'co-1101', enrolledAt: '2026-08-05', status: 'ENROLLED' },
+    { id: 'enr-06', studentId: 'stu-02', courseOfferingId: 'co-1102', enrolledAt: '2026-08-05', status: 'ENROLLED' },
+    { id: 'enr-07', studentId: 'stu-02', courseOfferingId: 'co-2101', enrolledAt: '2026-08-05', status: 'ENROLLED' },
+    { id: 'enr-08', studentId: 'stu-02', courseOfferingId: 'co-2103', enrolledAt: '2026-08-05', status: 'ENROLLED' },
+
+    // Sabbir Hossain (CSE Y1S1)
+    { id: 'enr-09', studentId: 'stu-03', courseOfferingId: 'co-1101', enrolledAt: '2026-08-05', status: 'ENROLLED' },
+    { id: 'enr-10', studentId: 'stu-03', courseOfferingId: 'co-1103', enrolledAt: '2026-08-05', status: 'ENROLLED' },
+
+    // Labib Ahmed (ICT Y2S1)
+    { id: 'enr-12', studentId: 'stu-04', courseOfferingId: 'co-ict-2101', enrolledAt: '2026-08-05', status: 'ENROLLED' },
+
+    // Amina Khatun (EEE Y1S1)
+    { id: 'enr-13', studentId: 'stu-05', courseOfferingId: 'co-eee-1101', enrolledAt: '2026-08-05', status: 'ENROLLED' },
+    { id: 'enr-14', studentId: 'stu-05', courseOfferingId: 'co-eee-1102', enrolledAt: '2026-08-05', status: 'ENROLLED' },
   ],
   faceProfiles: [
     {
@@ -205,6 +324,36 @@ const INITIAL_STATE: SystemDatabaseState = {
       courseOfferingId: 'co-1101',
       teacherId: 'tch-01',
       dayOfWeek: 'Sunday',
+      startTime: '10:00 AM',
+      endTime: '11:00 AM',
+      room: 'Room 304',
+      building: 'Academic Complex 2',
+    },
+    {
+      id: 'rt-02',
+      courseOfferingId: 'co-1102',
+      teacherId: 'tch-01',
+      dayOfWeek: 'Sunday',
+      startTime: '11:00 AM',
+      endTime: '01:00 PM',
+      room: 'Lab 402',
+      building: 'Academic Complex 2',
+    },
+    {
+      id: 'rt-03',
+      courseOfferingId: 'co-2103',
+      teacherId: 'tch-03',
+      dayOfWeek: 'Monday',
+      startTime: '11:00 AM',
+      endTime: '12:00 PM',
+      room: 'Room 306',
+      building: 'Academic Complex 2',
+    },
+    {
+      id: 'rt-04',
+      courseOfferingId: 'co-2101',
+      teacherId: 'tch-03',
+      dayOfWeek: 'Wednesday',
       startTime: '10:00 AM',
       endTime: '11:00 AM',
       room: 'Room 304',
@@ -261,6 +410,7 @@ class DatabaseService {
   constructor() {
     // Initialize strictly with local backup/seed data. Never fire unauthenticated Firestore queries on startup.
     this.state = this.loadLocalBackup();
+    this.runDataIntegrityCheckAndMigrations();
   }
 
   private loadLocalBackup(): SystemDatabaseState {
@@ -268,9 +418,27 @@ class DatabaseService {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
+
+        const mergeById = <T extends { id: string }>(initialList: T[], savedList?: T[]): T[] => {
+          if (!savedList || !Array.isArray(savedList)) return [...initialList];
+          const map = new Map<string, T>();
+          initialList.forEach(item => map.set(item.id, item));
+          savedList.forEach(item => map.set(item.id, { ...(map.get(item.id) || {}), ...item }));
+          return Array.from(map.values());
+        };
+
         return {
           ...INITIAL_STATE,
           ...parsed,
+          departments: mergeById(INITIAL_STATE.departments, parsed.departments),
+          batches: mergeById(INITIAL_STATE.batches, parsed.batches),
+          teachers: mergeById(INITIAL_STATE.teachers, parsed.teachers),
+          students: mergeById(INITIAL_STATE.students, parsed.students),
+          courses: mergeById(INITIAL_STATE.courses, parsed.courses),
+          courseOfferings: mergeById(INITIAL_STATE.courseOfferings, parsed.courseOfferings),
+          teacherAssignments: mergeById(INITIAL_STATE.teacherAssignments, parsed.teacherAssignments),
+          studentEnrollments: mergeById(INITIAL_STATE.studentEnrollments, parsed.studentEnrollments),
+          routines: mergeById(INITIAL_STATE.routines, parsed.routines),
           settings: { ...DEFAULT_SYSTEM_SETTINGS, ...(parsed.settings || {}) },
         };
       }
@@ -278,6 +446,53 @@ class DatabaseService {
       // Fallback
     }
     return INITIAL_STATE;
+  }
+
+  /**
+   * System-wide self-healing integrity verification:
+   * 1. Generates 4-year cohorts for any department lacking batches.
+   * 2. Automatically fixes known legacy student department mismatches (e.g., student with IT- roll mapped to CSE).
+   * 3. Preserves all attendance records, logins, and historical grades safely.
+   */
+  private runDataIntegrityCheckAndMigrations(): void {
+    let modified = false;
+
+    // 1. Ensure batches for all existing departments
+    for (const dept of this.state.departments) {
+      const deptBatches = this.state.batches.filter(b => b.departmentId === dept.id);
+      if (deptBatches.length === 0) {
+        const generated = this.generateDefaultBatchesForDepartment(dept.id, dept.code);
+        this.state.batches.push(...generated);
+        modified = true;
+      }
+    }
+
+    // 2. Data consistency for students: If student ID has 'IT-' or email has 'it', ensure departmentId is 'dept-ict'
+    for (const student of this.state.students) {
+      if (student.studentId.toUpperCase().startsWith('IT-') && student.departmentId !== 'dept-ict') {
+        student.departmentId = 'dept-ict';
+        const matchingBatch =
+          this.state.batches.find(b => b.departmentId === 'dept-ict' && b.currentYear === student.year) ||
+          this.state.batches.find(b => b.departmentId === 'dept-ict');
+        if (matchingBatch) student.batchId = matchingBatch.id;
+        modified = true;
+      } else if (student.studentId.toUpperCase().startsWith('EEE-') && student.departmentId !== 'dept-eee') {
+        student.departmentId = 'dept-eee';
+        const matchingBatch =
+          this.state.batches.find(b => b.departmentId === 'dept-eee' && b.currentYear === student.year) ||
+          this.state.batches.find(b => b.departmentId === 'dept-eee');
+        if (matchingBatch) student.batchId = matchingBatch.id;
+        modified = true;
+      }
+    }
+
+    if (modified) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
+      } catch {
+        // Ignore storage errors
+      }
+    }
   }
 
   public saveLocalBackup(): void {
@@ -382,7 +597,11 @@ class DatabaseService {
    * Helper that sanitizes any data before sending to Firestore setDoc,
    * completely preventing "Unsupported field value: undefined" errors.
    */
-  private async safeSetDoc(docRef: any, data: any, options?: any): Promise<void> {
+  public async safeSetDoc(docRef: any, data: any, options?: any): Promise<void> {
+    if (!docRef) {
+      console.warn('safeSetDoc called without a valid DocumentReference; skipping Firestore write.');
+      return;
+    }
     const cleanData = sanitizeForFirestore(data);
     if (options) {
       return setDoc(docRef, cleanData, options);
@@ -550,6 +769,14 @@ class DatabaseService {
     return this.state.departments;
   }
 
+  public getDepartmentById(deptId?: string): Department | undefined {
+    if (!deptId) return undefined;
+    const clean = deptId.trim().toLowerCase();
+    return this.state.departments.find(
+      d => d.id.toLowerCase() === clean || d.code.toLowerCase() === clean
+    );
+  }
+
   public addDepartment(dept: Omit<Department, 'id'>): Department {
     const newDept: Department = {
       ...dept,
@@ -562,6 +789,9 @@ class DatabaseService {
       handleFirestoreError(err, OperationType.CREATE, `departments/${newDept.id}`);
     });
 
+    // Automatically generate 4 academic cohort batches for this new department
+    this.ensureBatchesForDepartment(newDept.id);
+
     return newDept;
   }
 
@@ -572,6 +802,39 @@ class DatabaseService {
 
   public getBatches(): Batch[] {
     return this.state.batches;
+  }
+
+  public getBatchesByDepartment(departmentId?: string): Batch[] {
+    if (!departmentId || departmentId === 'ALL') return this.state.batches;
+    return this.state.batches.filter(b => b.departmentId === departmentId);
+  }
+
+  public generateDefaultBatchesForDepartment(departmentId: string, departmentCode?: string): Batch[] {
+    const code = departmentCode || departmentId.replace('dept-', '').toUpperCase();
+    return [
+      { id: `batch-${code.toLowerCase()}-2026`, name: `Batch 2026 (1st Year - ${code})`, startYear: 2026, departmentId, currentYear: 1, currentSemester: 1 },
+      { id: `batch-${code.toLowerCase()}-2025`, name: `Batch 2025 (2nd Year - ${code})`, startYear: 2025, departmentId, currentYear: 2, currentSemester: 1 },
+      { id: `batch-${code.toLowerCase()}-2024`, name: `Batch 2024 (3rd Year - ${code})`, startYear: 2024, departmentId, currentYear: 3, currentSemester: 1 },
+      { id: `batch-${code.toLowerCase()}-2023`, name: `Batch 2023 (4th Year - ${code})`, startYear: 2023, departmentId, currentYear: 4, currentSemester: 1 },
+    ];
+  }
+
+  public ensureBatchesForDepartment(departmentId: string): Batch[] {
+    const existing = this.getBatchesByDepartment(departmentId);
+    if (existing.length > 0) return existing;
+
+    const dept = this.getDepartmentById(departmentId);
+    const newBatches = this.generateDefaultBatchesForDepartment(departmentId, dept?.code);
+    this.state.batches.push(...newBatches);
+    this.saveLocalBackup();
+
+    for (const b of newBatches) {
+      this.safeSetDoc(doc(firestoreDb, 'batches', b.id), b).catch(err => {
+        handleFirestoreError(err, OperationType.CREATE, `batches/${b.id}`);
+      });
+    }
+
+    return newBatches;
   }
 
   public addBatch(batch: Omit<Batch, 'id'>): Batch {
@@ -740,6 +1003,18 @@ class DatabaseService {
     return this.state.teachers.some(t => t.teacherId.toLowerCase() === clean && t.id !== excludeId);
   }
 
+  public findTeacher(query?: string | null): Teacher | undefined {
+    if (!query) return undefined;
+    const q = query.trim().toLowerCase();
+    return this.state.teachers.find(
+      t =>
+        t.id.toLowerCase() === q ||
+        t.teacherId.toLowerCase() === q ||
+        t.email.toLowerCase() === q ||
+        (t.authUid && t.authUid === query.trim())
+    );
+  }
+
   public getTeacherAssignments(): TeacherAssignment[] {
     return this.state.teacherAssignments;
   }
@@ -816,6 +1091,18 @@ class DatabaseService {
     return this.state.students;
   }
 
+  public findStudent(query?: string | null): Student | undefined {
+    if (!query) return undefined;
+    const q = query.trim().toLowerCase();
+    return this.state.students.find(
+      s =>
+        s.id.toLowerCase() === q ||
+        s.studentId.toLowerCase() === q ||
+        s.email.toLowerCase() === q ||
+        (s.authUid && s.authUid === query.trim())
+    );
+  }
+
   public getStudentEnrollments(): StudentEnrollment[] {
     return this.state.studentEnrollments;
   }
@@ -883,15 +1170,31 @@ class DatabaseService {
     return studentMatch || teacherMatch;
   }
 
-  public enrollStudent(studentId: string, courseOfferingId: string): { success: boolean; message: string } {
+  public enrollStudent(
+    studentId: string,
+    courseOfferingId: string,
+    options?: { allowCrossBatch?: boolean }
+  ): { success: boolean; message: string } {
     const student = this.state.students.find(s => s.id === studentId);
     const offering = this.state.courseOfferings.find(co => co.id === courseOfferingId);
     if (!student || !offering) return { success: false, message: 'Invalid student or course offering' };
 
-    if (student.batchId !== offering.batchId || student.year !== offering.year || student.semester !== offering.semester) {
+    const course = this.state.courses.find(c => c.id === offering.courseId);
+
+    const check = checkStudentCourseEligibility(
+      student,
+      offering,
+      course,
+      this.state.studentEnrollments,
+      this.state.departments,
+      this.state.batches,
+      options
+    );
+
+    if (!check.eligible) {
       return {
         success: false,
-        message: `Academic Structure Mismatch: Student is in Year ${student.year} Sem ${student.semester} (${student.batchId}), but course offering belongs to Year ${offering.year} Sem ${offering.semester} (${offering.batchId}).`,
+        message: check.reason || 'Student is not eligible for this course offering.',
       };
     }
 
@@ -1159,6 +1462,74 @@ class DatabaseService {
     this.safeSetDoc(doc(firestoreDb, 'attendance_sessions', session.id), session).catch(err => {
       handleFirestoreError(err, OperationType.UPDATE, `attendance_sessions/${session.id}`);
     });
+  }
+
+  public recordManualSessionAttendance(params: {
+    courseOfferingId: string;
+    teacherId: string;
+    date: string;
+    startTime: string;
+    notes?: string;
+    records: Array<{
+      studentId: string;
+      status: AttendanceStatus;
+      minutesLate: number;
+      notes?: string;
+    }>;
+  }): { session: AttendanceSession; records: AttendanceRecord[] } {
+    const now = new Date();
+    const session: AttendanceSession = {
+      id: 'sess-manual-' + Date.now(),
+      courseOfferingId: params.courseOfferingId,
+      teacherId: params.teacherId,
+      date: params.date,
+      startTime: params.startTime,
+      endTime: new Date(now.getTime() + 60 * 60 * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      attendanceMethod: 'QR',
+      status: 'CLOSED',
+      currentToken: 'MANUAL-SHEET',
+      tokenExpiresAt: now.toISOString(),
+      allowSelfCheckIn: false,
+      notes: params.notes,
+      createdAt: now.toISOString(),
+      closedAt: now.toISOString(),
+    };
+
+    this.state.attendanceSessions.unshift(session);
+    this.safeSetDoc(doc(firestoreDb, 'attendance_sessions', session.id), session).catch(err => {
+      handleFirestoreError(err, OperationType.CREATE, `attendance_sessions/${session.id}`);
+    });
+
+    const createdRecords: AttendanceRecord[] = [];
+    for (const item of params.records) {
+      const rec: AttendanceRecord = {
+        id: 'rec-' + Date.now() + '-' + Math.floor(Math.random() * 90000 + 10000),
+        sessionId: session.id,
+        courseOfferingId: params.courseOfferingId,
+        studentId: item.studentId,
+        timestamp: new Date().toISOString(),
+        method: 'MANUAL_ADMIN',
+        status: item.status,
+        minutesLate: item.minutesLate,
+        notes: item.notes || 'Marked manually',
+      };
+      this.state.attendanceRecords.push(rec);
+      createdRecords.push(rec);
+      this.safeSetDoc(doc(firestoreDb, 'attendance_records', rec.id), rec).catch(err => {
+        handleFirestoreError(err, OperationType.CREATE, `attendance_records/${rec.id}`);
+      });
+    }
+
+    const offering = this.state.courseOfferings.find(co => co.id === params.courseOfferingId);
+    if (offering) {
+      offering.conductedClasses = (offering.conductedClasses || 0) + 1;
+      this.safeSetDoc(doc(firestoreDb, 'course_offerings', offering.id), offering).catch(err => {
+        handleFirestoreError(err, OperationType.UPDATE, `course_offerings/${offering.id}`);
+      });
+    }
+
+    this.saveLocalBackup();
+    return { session, records: createdRecords };
   }
 
   // ==================== ATTENDANCE RECORDS ====================
