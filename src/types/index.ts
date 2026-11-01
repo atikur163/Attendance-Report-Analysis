@@ -237,6 +237,14 @@ export interface SystemSettings {
   faceMatchThreshold: number; // default 0.72
 }
 
+export type ProjectedExamStatus = 'ELIGIBLE' | 'AT_RISK' | 'PROJECTED_INELIGIBLE';
+
+export type EarlyWarningCategory =
+  | 'BELOW_60_CAN_REACH' // Less than 60%, but can still reach 60% if attends remaining classes
+  | 'BELOW_60_CANNOT_REACH' // Less than 60%, mathematically unable to reach 60% even with 100% attendance
+  | 'AT_OR_ABOVE_60_SAFE' // >= 60% and comfortably on track
+  | 'AT_OR_ABOVE_60_AT_RISK'; // >= 60% currently, but may fail if future classes are missed
+
 /**
  * Centralized Attendance Analytics Metrics for a Student in a Course Offering
  */
@@ -267,10 +275,19 @@ export interface StudentCourseAnalytics {
   attendancePercentage: number;
   examEligible: boolean; // attendancePercentage >= 60.0%
   
-  // Projections
+  // Projections & Mathematical Feasibility
   maximumPossibleAttendance: number;
   requiredFutureAttendance: number;
+  minAdditionalClassesToPass: number; // Minimum additional classes student must attend to reach 60%
   consecutiveClassesToReach60: number;
   isRecoverable: boolean;
+  canReach60: boolean; // Mathematically possible to reach 60%
+  isMathematicallyImpossible: boolean; // Mathematically unable to reach 60% even with 100% attendance
+  
+  // 50% Course Milestone & Status
+  isHalfwayMilestone: boolean; // True when approx >= 50% of scheduled classes have been held
+  courseProgressPercentage: number; // (conducted / planned) * 100
+  projectedExamStatus: ProjectedExamStatus;
+  earlyWarningCategory: EarlyWarningCategory;
   riskLevel: RiskLevel;
 }

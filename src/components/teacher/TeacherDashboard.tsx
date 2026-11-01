@@ -171,6 +171,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [selectedCourseOfferingId, setSelectedCourseOfferingId] = useState<string>(
     assignments[0]?.courseOfferingId || ''
   );
+  const [warningStatusMessage, setWarningStatusMessage] = useState<string | null>(null);
+  const [isTriggeringWarning, setIsTriggeringWarning] = useState(false);
 
   // Keep active session in sync with allSessions
   useEffect(() => {
@@ -727,78 +729,170 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           </div>
         </div>
 
-        {/* Course Progress Summary */}
+        {/* Course Progress Summary & 50% Milestone Inspector */}
         {viewingOffering && viewingCourse && (
-          <div className="p-5 bg-slate-50 border-b border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
-            <div className="bg-white p-3 rounded-xl border border-slate-200">
-              <div className="text-[11px] text-slate-400">Planned Classes</div>
-              <div className="text-lg font-bold text-slate-800">{viewingOffering.plannedClasses}</div>
-            </div>
-            <div className="bg-white p-3 rounded-xl border border-slate-200">
-              <div className="text-[11px] text-slate-400">Conducted Classes</div>
-              <div className="text-lg font-bold text-indigo-700">{viewingOffering.conductedClasses}</div>
-            </div>
-            <div className="bg-white p-3 rounded-xl border border-slate-200">
-              <div className="text-[11px] text-slate-400">Remaining Classes</div>
-              <div className="text-lg font-bold text-slate-800">
-                {Math.max(0, viewingOffering.plannedClasses - viewingOffering.conductedClasses)}
+          <div className="p-5 bg-slate-50 border-b border-slate-200 space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+              <div className="bg-white p-3 rounded-xl border border-slate-200">
+                <div className="text-[11px] text-slate-400">Planned Classes</div>
+                <div className="text-lg font-bold text-slate-800">{viewingOffering.plannedClasses}</div>
+              </div>
+              <div className="bg-white p-3 rounded-xl border border-slate-200">
+                <div className="text-[11px] text-slate-400">Conducted Classes</div>
+                <div className="text-lg font-bold text-indigo-700">{viewingOffering.conductedClasses}</div>
+              </div>
+              <div className="bg-white p-3 rounded-xl border border-slate-200">
+                <div className="text-[11px] text-slate-400">Remaining Classes</div>
+                <div className="text-lg font-bold text-slate-800">
+                  {Math.max(0, viewingOffering.plannedClasses - viewingOffering.conductedClasses)}
+                </div>
+              </div>
+              <div className="bg-white p-3 rounded-xl border border-slate-200">
+                <div className="text-[11px] text-slate-400">Enrolled Students</div>
+                <div className="text-lg font-bold text-slate-800">{viewingEnrollments.length}</div>
               </div>
             </div>
-            <div className="bg-white p-3 rounded-xl border border-slate-200">
-              <div className="text-[11px] text-slate-400">Enrolled Students</div>
-              <div className="text-lg font-bold text-slate-800">{viewingEnrollments.length}</div>
-            </div>
+
+            {/* 50% Milestone Banner & Warning Dispatch */}
+            {viewingOffering.conductedClasses >= Math.floor(viewingOffering.plannedClasses * 0.5) && (
+              <div className="bg-gradient-to-r from-indigo-50 to-amber-50 border border-indigo-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="flex items-center space-x-2.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse" />
+                  <div>
+                    <span className="font-extrabold text-slate-900">
+                      50% Milestone Reached ({viewingOffering.conductedClasses} of {viewingOffering.plannedClasses} classes held)
+                    </span>
+                    <p className="text-slate-600 text-[11px] mt-0.5">
+                      Early warning inspection active: Students below 60% attendance have been identified with required makeup calculations.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={async () => {
+                    setIsTriggeringWarning(true);
+                    try {
+                      const res = await NotificationService.triggerHalfwayCourseEarlyWarnings(viewingOffering.id);
+                      setWarningStatusMessage(`Dispatched warning notices to ${res.warningsSent} at-risk students.`);
+                      setTimeout(() => setWarningStatusMessage(null), 4000);
+                    } finally {
+                      setIsTriggeringWarning(false);
+                    }
+                  }}
+                  disabled={isTriggeringWarning}
+                  className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition flex items-center space-x-1.5 shrink-0 shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{isTriggeringWarning ? 'Sending Notices...' : 'Send 50% Milestone Warnings'}</span>
+                </button>
+              </div>
+            )}
+
+            {warningStatusMessage && (
+              <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-xl flex items-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{warningStatusMessage}</span>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Student Attendance & Risk Table */}
+        {/* Student Attendance & Risk Table with 8 metrics */}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
               <tr>
                 <th className="py-3 px-4">Student</th>
-                <th className="py-3 px-4">Present</th>
-                <th className="py-3 px-4">Late</th>
-                <th className="py-3 px-4">Absent</th>
-                <th className="py-3 px-4">3-Late Penalty</th>
-                <th className="py-3 px-4">Attendance %</th>
-                <th className="py-3 px-4">Exam Status</th>
-                <th className="py-3 px-4">Risk Level</th>
-                <th className="py-3 px-4">Max Possible %</th>
+                <th className="py-3 px-4">Attended</th>
+                <th className="py-3 px-4">Current %</th>
+                <th className="py-3 px-4">Remaining</th>
+                <th className="py-3 px-4">Needed for 60%</th>
+                <th className="py-3 px-4">Feasibility</th>
+                <th className="py-3 px-4">Projected Status</th>
+                <th className="py-3 px-4 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {studentAnalyticsList.map(item => {
-                const riskClasses = getRiskBadgeClasses(item.riskLevel);
                 return (
                   <tr key={item.studentId} className="hover:bg-slate-50 transition-colors">
                     <td className="py-3 px-4">
                       <div className="font-bold text-slate-900">{item.studentName}</div>
                       <div className="text-[11px] text-slate-400 font-mono">{item.studentRoll}</div>
                     </td>
-                    <td className="py-3 px-4 font-semibold text-emerald-700">{item.presentCount}</td>
-                    <td className="py-3 px-4 font-semibold text-amber-700">{item.lateCount}</td>
-                    <td className="py-3 px-4 font-semibold text-rose-700">{item.absentCount}</td>
-                    <td className="py-3 px-4 font-semibold text-slate-700">{item.penaltyCount}</td>
-                    <td className="py-3 px-4 font-extrabold text-slate-900">{item.attendancePercentage}%</td>
+                    <td className="py-3 px-4">
+                      <div className="font-extrabold text-slate-900">{item.effectivePresentCount}</div>
+                      <div className="text-[10px] text-slate-400">
+                        {item.presentCount}P • {item.lateCount}L • {item.absentCount}A
+                      </div>
+                    </td>
                     <td className="py-3 px-4">
                       <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          item.examEligible
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-rose-100 text-rose-800'
+                        className={`font-black text-xs ${
+                          item.attendancePercentage >= 60.0 ? 'text-emerald-700' : 'text-rose-600'
                         }`}
                       >
-                        {item.examEligible ? 'Eligible' : 'Not Eligible'}
+                        {item.attendancePercentage}%
                       </span>
+                    </td>
+                    <td className="py-3 px-4 font-mono font-bold text-slate-700">
+                      {item.remainingClasses}
                     </td>
                     <td className="py-3 px-4">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${riskClasses.bg} ${riskClasses.text} ${riskClasses.border}`}>
-                        {item.riskLevel}
-                      </span>
+                      {item.minAdditionalClassesToPass === 0 ? (
+                        <span className="text-emerald-700 font-bold text-[11px]">Met (0 needed)</span>
+                      ) : (
+                        <span className="text-indigo-700 font-bold text-[11px]">
+                          +{item.minAdditionalClassesToPass} more
+                        </span>
+                      )}
                     </td>
-                    <td className="py-3 px-4 font-mono font-bold text-slate-800">
-                      {item.maximumPossibleAttendance}%
+                    <td className="py-3 px-4">
+                      {item.canReach60 ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
+                          Possible (Max {item.maximumPossibleAttendance}%)
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
+                          Barred (Max {item.maximumPossibleAttendance}%)
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4">
+                      {item.projectedExamStatus === 'ELIGIBLE' && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                          Eligible
+                        </span>
+                      )}
+                      {item.projectedExamStatus === 'AT_RISK' && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                          At Risk
+                        </span>
+                      )}
+                      {item.projectedExamStatus === 'PROJECTED_INELIGIBLE' && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">
+                          Barred
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      {item.projectedExamStatus !== 'ELIGIBLE' && (
+                        <button
+                          onClick={async () => {
+                            const res = await NotificationService.sendIndividualEarlyWarning(item);
+                            setWarningStatusMessage(
+                              res.success
+                                ? `Sent warning notice to ${item.studentName}!`
+                                : `Notice logged: ${res.message}`
+                            );
+                            setTimeout(() => setWarningStatusMessage(null), 3500);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-bold transition inline-flex items-center space-x-1 cursor-pointer"
+                        >
+                          <Send className="w-3 h-3" />
+                          <span>Warn</span>
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

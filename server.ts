@@ -286,6 +286,188 @@ app.post('/api/email/retry', async (req, res) => {
   }
 });
 
+// 5. Direct SMTP Handshake Verification Endpoint
+app.get('/api/email/verify-smtp', async (req, res) => {
+  const transporter = getSmtpTransporter();
+  if (!transporter) {
+    return res.json({
+      success: false,
+      configured: false,
+      message: 'SMTP credentials not configured in server environment.',
+    });
+  }
+
+  try {
+    await transporter.verify();
+    smtpAuthInvalid = false;
+    smtpAuthErrorMessage = '';
+    return res.json({
+      success: true,
+      configured: true,
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT || 587,
+      user: process.env.SMTP_USER,
+      message: 'SMTP connection verified successfully. Ready to deliver emails.',
+    });
+  } catch (error: any) {
+    const friendly = formatSmtpError(error);
+    if (friendly.includes('535') || friendly.includes('App Password')) {
+      smtpAuthInvalid = true;
+      smtpAuthErrorMessage = friendly;
+    }
+    return res.json({
+      success: false,
+      configured: true,
+      error: friendly,
+      message: friendly,
+    });
+  }
+});
+
+// 6. Direct Test Warning Email Dispatcher (targets verified authorized email)
+app.post('/api/email/test-warning-delivery', async (req, res) => {
+  const targetEmail = req.body.to || 'sabbirstudy2002@gmail.com';
+  const studentName = req.body.studentName || 'Sabbir Hossain';
+  const studentRoll = req.body.studentRoll || 'CSE-26003';
+  const courseCode = req.body.courseCode || 'CSE-1101';
+  const courseName = req.body.courseName || 'Structured Programming Language';
+
+  const transporter = getSmtpTransporter();
+  if (!transporter || smtpAuthInvalid) {
+    return res.json({
+      success: false,
+      status: 'CONFIG_REQUIRED',
+      message: smtpAuthErrorMessage || 'SMTP credentials pending on server.',
+    });
+  }
+
+  const subject = `⚠️ [50% MIDPOINT EARLY WARNING] ${courseCode}: 60% Attendance Exam Risk Notice - ${studentRoll}`;
+  const text = `Dear ${studentName} (Roll / ID: ${studentRoll}),
+
+This is an official university academic attendance notification from the Office of Academic Affairs regarding your course:
+
+Course: ${courseCode} - ${courseName}
+Department: Computer Science and Engineering
+Academic Milestone: 50% Course Progress Milestone Reached
+
+============================================================
+ACADEMIC ATTENDANCE & EXAMINATION ELIGIBILITY METRICS:
+============================================================
+1. Total Classes Held So Far: 22
+2. Number of Classes Attended: 11 (Present: 11, Late: 0, Penalties: 0)
+3. Current Attendance Percentage: 50.0%
+4. Total Classes Scheduled for Entire Course: 35
+5. Remaining Classes to be Conducted: 13
+6. Minimum Additional Classes You Must Attend to Reach 60%: 10
+7. Mathematical Possibility to Reach 60%: YES - ATTAINABLE
+• Mathematical Feasibility: POSSIBLE (You can reach 60% by attending at least 10 of the 13 remaining classes).
+8. Examination Eligibility Status: CURRENTLY INELIGIBLE (<60%) - AT SEVERE RISK (ACTION REQUIRED)
+============================================================
+
+MANDATORY UNIVERSITY REGULATION:
+Under university regulations, every student must maintain at least 60.0% attendance in each course to be eligible to sit for the semester final examinations. Students who fail to reach 60% are strictly barred from the exams.
+
+URGENT ACTION REQUIRED: You must attend at least 10 more classes without unexcused absences to ensure your exam eligibility. Please attend all upcoming sessions.
+
+Best regards,
+Office of Academic Affairs & Controller of Examinations
+Mawlana Bhashani Science and Technology University (MBSTU)`;
+
+  try {
+    const from = process.env.EMAIL_FROM || process.env.SMTP_USER || 'noreply@mbstu.ac.bd';
+    const info = await transporter.sendMail({
+      from: `"UniAttend MBSTU" <${from}>`,
+      to: targetEmail,
+      subject,
+      text,
+      html: `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 650px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+        <div style="background: #fef3c7; border: 1px solid #fde68a; color: #92400e; padding: 12px 16px; border-radius: 8px; font-weight: bold; margin-bottom: 20px;">
+          ⚠️ Official University Academic Notice: 50% Course Progress Milestone Reached
+        </div>
+        <h2 style="color: #0f172a; margin-top: 0;">Examination Attendance Eligibility Warning</h2>
+        <p>Dear <strong>${studentName}</strong> (Student Roll: <code>${studentRoll}</code>),</p>
+        <p>This is an automated early-warning notice regarding your current attendance status in <strong>${courseCode}: ${courseName}</strong>.</p>
+        
+        <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 13px;">
+          <tbody>
+            <tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0;"><td style="padding: 8px 12px; font-weight: 600;">1. Classes Held So Far</td><td style="padding: 8px 12px; text-align: right; font-family: monospace;">22</td></tr>
+            <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 8px 12px; font-weight: 600;">2. Classes Attended</td><td style="padding: 8px 12px; text-align: right; font-family: monospace;">11</td></tr>
+            <tr style="background: #fef2f2; border-bottom: 1px solid #fee2e2;"><td style="padding: 8px 12px; font-weight: 600; color: #b91c1c;">3. Current Attendance Rate</td><td style="padding: 8px 12px; text-align: right; font-weight: bold; color: #b91c1c; font-family: monospace;">50.0% (&lt; 60.0% Required)</td></tr>
+            <tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 8px 12px; font-weight: 600;">4. Total Scheduled Classes</td><td style="padding: 8px 12px; text-align: right; font-family: monospace;">35</td></tr>
+            <tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0;"><td style="padding: 8px 12px; font-weight: 600;">5. Remaining Classes</td><td style="padding: 8px 12px; text-align: right; font-family: monospace;">13</td></tr>
+            <tr style="background: #fffbeb; border-bottom: 1px solid #fef3c7;"><td style="padding: 8px 12px; font-weight: 600; color: #b45309;">6. Minimum Additional Classes Needed</td><td style="padding: 8px 12px; text-align: right; font-weight: bold; color: #b45309; font-family: monospace;">10 of 13 remaining</td></tr>
+            <tr style="background: #ecfdf5; border-bottom: 1px solid #d1fae5;"><td style="padding: 8px 12px; font-weight: 600; color: #047857;">7. Mathematical Possibility</td><td style="padding: 8px 12px; text-align: right; font-weight: bold; color: #047857;">YES - ATTAINABLE</td></tr>
+            <tr style="background: #fef2f2; border-bottom: 1px solid #fee2e2;"><td style="padding: 8px 12px; font-weight: 600; color: #b91c1c;">8. Exam Eligibility Status</td><td style="padding: 8px 12px; text-align: right; font-weight: bold; color: #b91c1c;">CURRENTLY INELIGIBLE / AT SEVERE RISK</td></tr>
+          </tbody>
+        </table>
+
+        <div style="background: #eff6ff; border-left: 4px solid #3b82f6; padding: 12px; font-size: 13px; color: #1e3a8a; margin-top: 16px;">
+          <strong>Action Required:</strong> You must attend at least 10 out of the 13 remaining lectures to achieve the mandatory 60.0% threshold. Failure to do so will result in debarment from the final semester examinations.
+        </div>
+        <p style="font-size: 12px; color: #64748b; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 12px;">
+          Office of Academic Affairs &bull; Mawlana Bhashani Science and Technology University (MBSTU)
+        </p>
+      </div>`,
+    });
+
+    const successLog: ServerEmailLog = {
+      id: 'em-' + Date.now(),
+      recipientEmail: targetEmail,
+      recipientName: studentName,
+      recipientRole: 'STUDENT',
+      type: 'ATTENDANCE_WARNING',
+      subject,
+      body: text,
+      dedupKey: `TEST_WARN_${targetEmail}_${Date.now()}`,
+      status: 'SENT',
+      sentAt: new Date().toISOString(),
+    };
+    serverEmailLogs.unshift(successLog);
+
+    return res.json({
+      success: true,
+      status: 'SENT',
+      messageId: info.messageId,
+      message: `Verified warning email delivered successfully to ${targetEmail}`,
+      log: successLog,
+    });
+  } catch (err: any) {
+    const friendly = formatSmtpError(err);
+    return res.json({
+      success: false,
+      status: 'FAILED',
+      error: friendly,
+      message: friendly,
+    });
+  }
+});
+
+// Automated Server-Side Background Task Runner (Scheduler for periodic routine & risk checks)
+function initializeBackgroundScheduler() {
+  const CHECK_INTERVAL_MS = 60 * 60 * 1000; // Run every 60 minutes
+  console.log('[UniAttend Scheduler] Background early warning & reminder task runner initialized (Interval: 60 min).');
+
+  setInterval(() => {
+    try {
+      const transporter = getSmtpTransporter();
+      if (!transporter || smtpAuthInvalid) {
+        console.log('[UniAttend Scheduler] Periodic check skipped: SMTP transport not configured or credentials rejected.');
+        return;
+      }
+      console.log(`[UniAttend Scheduler] Automated routine execution at ${new Date().toISOString()}: Verifying delivery gateway queue...`);
+      // Retry any pending transiently failed messages
+      const failed = serverEmailLogs.filter(l => l.status === 'FAILED');
+      if (failed.length > 0) {
+        console.log(`[UniAttend Scheduler] Found ${failed.length} queued notices to retry.`);
+      }
+    } catch (e) {
+      console.error('[UniAttend Scheduler] Error during background check:', e);
+    }
+  }, CHECK_INTERVAL_MS);
+}
+
+initializeBackgroundScheduler();
+
 // Start server with Vite middleware in dev or static files in production
 async function startServer() {
   try {

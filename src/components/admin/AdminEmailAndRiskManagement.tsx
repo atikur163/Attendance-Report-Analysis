@@ -37,9 +37,21 @@ export const AdminEmailAndRiskManagement: React.FC<AdminEmailAndRiskManagementPr
   const [actionNotice, setActionNotice] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [retryingLogId, setRetryingLogId] = useState<string | null>(null);
 
-  // Search filter
+  // Search & category filter state
   const [logSearch, setLogSearch] = useState('');
   const [riskSearch, setRiskSearch] = useState('');
+  const [riskFilter, setRiskFilter] = useState<'ALL' | 'MILESTONE_50' | 'BELOW_60' | 'CAN_REACH' | 'BARRED'>('ALL');
+
+  // Live SMTP verification & test dispatcher state
+  const [testRecipientEmail, setTestRecipientEmail] = useState('sabbirstudy2002@gmail.com');
+  const [isTestingDelivery, setIsTestingDelivery] = useState(false);
+  const [isVerifyingSmtp, setIsVerifyingSmtp] = useState(false);
+  const [liveTestResult, setLiveTestResult] = useState<{
+    success: boolean;
+    message: string;
+    messageId?: string;
+    error?: string;
+  } | null>(null);
 
   // Fetch SMTP status from backend /api/email/status
   useEffect(() => {
@@ -63,20 +75,15 @@ export const AdminEmailAndRiskManagement: React.FC<AdminEmailAndRiskManagementPr
   const enrollments = db.getStudentEnrollments();
   const settings = db.getSettings();
 
-  // Compute Low Attendance (<60%) Watchlist
-  interface LowAttendanceItem {
+  // Comprehensive Early Warning & 60% Attendance Inspection Items
+  interface EarlyWarningItem {
     student: Student;
     course: Course;
     offering: CourseOffering;
-    conducted: number;
-    attended: number;
-    missed: number;
-    percentage: number;
-    requiredToRecover: number;
-    examEligible: boolean;
+    analytics: ReturnType<typeof computeStudentCourseAnalytics>;
   }
 
-  const lowAttendanceList: LowAttendanceItem[] = [];
+  const allEarlyWarningItems: EarlyWarningItem[] = [];
 
   for (const st of students) {
     const studentEnrs = enrollments.filter(e => e.studentId === st.id && e.status === 'ENROLLED');
@@ -100,28 +107,40 @@ export const AdminEmailAndRiskManagement: React.FC<AdminEmailAndRiskManagementPr
         settings,
       });
 
-      // Filter: total conducted > 0 and percentage < 60%
-      if (analytics.conductedClasses > 0 && analytics.attendancePercentage < 60.0) {
-        // Exact formula: max(0, ceil((0.60 * Total Held - Attended) / 0.40))
-        const req = Math.max(
-          0,
-          Math.ceil((0.60 * analytics.conductedClasses - analytics.presentCount) / 0.40)
-        );
-
-        lowAttendanceList.push({
-          student: st,
-          course: crs,
-          offering: off,
-          conducted: analytics.conductedClasses,
-          attended: analytics.presentCount,
-          missed: analytics.absentCount,
-          percentage: analytics.attendancePercentage,
-          requiredToRecover: req,
-          examEligible: analytics.examEligible,
-        });
-      }
+      allEarlyWarningItems.push({
+        student: st,
+        course: crs,
+        offering: off,
+        analytics,
+      });
     }
   }
+
+  // Filter based on selected category & search
+  const filteredRisk = allEarlyWarningItems.filter(item => {
+    const a = item.analytics;
+
+    // Category filter
+    if (riskFilter === 'MILESTONE_50' && !a.isHalfwayMilestone) return false;
+    if (riskFilter === 'BELOW_60' && a.attendancePercentage >= 60.0) return false;
+    if (riskFilter === 'CAN_REACH' && (a.canReach60 === false || a.minAdditionalClassesToPass === 0)) return false;
+    if (riskFilter === 'BARRED' && a.canReach60 !== false) return false;
+
+    // Search query
+    const q = riskSearch.toLowerCase();
+    return (
+      item.student.name.toLowerCase().includes(q) ||
+      item.student.studentId.toLowerCase().includes(q) ||
+      item.course.code.toLowerCase().includes(q) ||
+      item.course.name.toLowerCase().includes(q)
+    );
+  });
+
+  // Summary counts
+  const countMilestone50 = allEarlyWarningItems.filter(i => i.analytics.isHalfwayMilestone).length;
+  const countBelow60 = allEarlyWarningItems.filter(i => i.analytics.attendancePercentage < 60.0).length;
+  const countCanReach = allEarlyWarningItems.filter(i => i.analytics.canReach60 && i.analytics.minAdditionalClassesToPass > 0).length;
+  const countBarred = allEarlyWarningItems.filter(i => !i.analytics.canReach60).length;
 
   const handleScanWarnings = async () => {
     setIsScanning(true);
@@ -131,7 +150,7 @@ export const AdminEmailAndRiskManagement: React.FC<AdminEmailAndRiskManagementPr
       if (result.warningsSent > 0) {
         setActionNotice({
           type: 'success',
-          text: `Dispatched ${result.warningsSent} low-attendance warning email(s) successfully!`,
+          text: `Dispatched ${result.warningsSent} attendance warning email(s) successfully!`,
         });
       } else {
         setActionNotice({
@@ -149,32 +168,40 @@ export const AdminEmailAndRiskManagement: React.FC<AdminEmailAndRiskManagementPr
     }
   };
 
-  const handleSendSingleWarning = async (item: LowAttendanceItem) => {
+  const handleScan50Milestone = async () => {
+    setIsScanning(true);
     setActionNotice(null);
-    const totalHeld = item.conducted;
-    const attended = item.attended;
-    const req = item.requiredToRecover;
-    const dedupKey = `RISK_WARN_${item.student.id}_${item.offering.id}_${Date.now()}`;
-
-    const subject = `⚠️ URGENT ATTENDANCE WARNING (<60%): ${item.course.code} - Exam Ineligibility Notice`;
-    const text = `Dear ${item.student.name} (Roll: ${item.student.studentId}),\n\nYour attendance in ${item.course.code} (${item.course.name}) has fallen below the mandatory 60% threshold.\n\nAcademic Status:\n• Classes Held: ${totalHeld}\n• Attended: ${attended}\n• Missed: ${item.missed}\n• Current Attendance: ${item.percentage.toFixed(1)}%\n• Mandatory Next Consecutive Classes Required to Reach 60%: ${req}\n\nExam Ineligibility Notice:\nStudents with < 60% attendance are strictly barred from semester finals.\n\nBest regards,\nOffice of Academic Affairs\nUniAttend MBSTU`;
-
     try {
-      const res = await (NotificationService as any).dispatchServerEmail({
-        to: item.student.email,
-        recipientName: item.student.name,
-        recipientRole: 'STUDENT',
-        type: 'ATTENDANCE_WARNING',
-        courseOfferingId: item.offering.id,
-        subject,
-        text,
-        dedupKey,
-      });
-
-      if (res.status === 'SENT') {
-        setActionNotice({ type: 'success', text: `Warning successfully delivered to ${item.student.email}` });
+      const result = await NotificationService.triggerHalfwayCourseEarlyWarnings();
+      if (result.warningsSent > 0) {
+        setActionNotice({
+          type: 'success',
+          text: `50% Milestone Inspection Complete: Inspected ${result.inspectedCount} student enrollments across halfway courses. Dispatched ${result.warningsSent} early warning notice(s)! (${result.atRiskCount} at risk, ${result.ineligibleCount} mathematically barred)`,
+        });
       } else {
-        setActionNotice({ type: 'info', text: `Email queued: ${res.message}` });
+        setActionNotice({
+          type: 'info',
+          text: `50% Milestone Inspection Complete: Evaluated ${result.inspectedCount} student enrollments across halfway courses. (${result.atRiskCount} at risk, ${result.ineligibleCount} barred).`,
+        });
+      }
+      setEmailLogs(db.getEmailLogs());
+      onRefresh();
+    } catch (err: any) {
+      setActionNotice({ type: 'error', text: err.message || '50% milestone scan encountered an error.' });
+    } finally {
+      setIsScanning(false);
+      setTimeout(() => setActionNotice(null), 6000);
+    }
+  };
+
+  const handleSendSingleWarning = async (item: EarlyWarningItem) => {
+    setActionNotice(null);
+    try {
+      const res = await NotificationService.sendIndividualEarlyWarning(item.student.id, item.offering.id);
+      if (res.status === 'SENT') {
+        setActionNotice({ type: 'success', text: `Early warning notice successfully delivered to ${item.student.email}` });
+      } else {
+        setActionNotice({ type: 'info', text: `Notice queued for ${item.student.email}: ${res.message}` });
       }
       setEmailLogs(db.getEmailLogs());
       onRefresh();
@@ -229,20 +256,77 @@ export const AdminEmailAndRiskManagement: React.FC<AdminEmailAndRiskManagementPr
     }
   };
 
+  const handleVerifySmtpConnection = async () => {
+    setIsVerifyingSmtp(true);
+    setLiveTestResult(null);
+    try {
+      const res = await fetch('/api/email/verify-smtp');
+      const data = await res.json();
+      if (data.success) {
+        setActionNotice({
+          type: 'success',
+          text: `SMTP Handshake Verified: Connected to ${data.host}:${data.port} as ${data.user}`,
+        });
+      } else {
+        setActionNotice({
+          type: 'error',
+          text: `SMTP Verification Failed: ${data.message || data.error}`,
+        });
+      }
+    } catch (err: any) {
+      setActionNotice({ type: 'error', text: err.message || 'Failed to verify SMTP connection' });
+    } finally {
+      setIsVerifyingSmtp(false);
+      setTimeout(() => setActionNotice(null), 6000);
+    }
+  };
+
+  const handleSendLiveTestWarning = async () => {
+    if (!testRecipientEmail) return;
+    setIsTestingDelivery(true);
+    setLiveTestResult(null);
+    try {
+      const res = await fetch('/api/email/test-warning-delivery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: testRecipientEmail,
+          studentName: 'Sabbir Hossain',
+          studentRoll: 'CSE-26003',
+          courseCode: 'CSE-1101',
+          courseName: 'Structured Programming Language',
+        }),
+      });
+      const data = await res.json();
+      setLiveTestResult(data);
+      if (data.success) {
+        setActionNotice({
+          type: 'success',
+          text: `Live warning email successfully delivered to ${testRecipientEmail}! Message ID: ${data.messageId}`,
+        });
+        setEmailLogs(db.getEmailLogs());
+      } else {
+        setActionNotice({
+          type: 'error',
+          text: `Delivery failed: ${data.message || data.error}`,
+        });
+      }
+      onRefresh();
+    } catch (err: any) {
+      setLiveTestResult({ success: false, message: err.message });
+      setActionNotice({ type: 'error', text: err.message });
+    } finally {
+      setIsTestingDelivery(false);
+      setTimeout(() => setActionNotice(null), 7000);
+    }
+  };
+
   const filteredLogs = emailLogs.filter(l => {
     return (
       l.recipientEmail.toLowerCase().includes(logSearch.toLowerCase()) ||
       l.recipientName.toLowerCase().includes(logSearch.toLowerCase()) ||
       l.subject.toLowerCase().includes(logSearch.toLowerCase()) ||
       l.type.toLowerCase().includes(logSearch.toLowerCase())
-    );
-  });
-
-  const filteredRisk = lowAttendanceList.filter(item => {
-    return (
-      item.student.name.toLowerCase().includes(riskSearch.toLowerCase()) ||
-      item.student.studentId.toLowerCase().includes(riskSearch.toLowerCase()) ||
-      item.course.code.toLowerCase().includes(riskSearch.toLowerCase())
     );
   });
 
@@ -296,25 +380,110 @@ export const AdminEmailAndRiskManagement: React.FC<AdminEmailAndRiskManagementPr
           <p className="text-[11px] text-slate-400">
             Automated alerts for Teacher Accounts, 10-min Routine Reminders, and &lt;60% Student Warning notices.
           </p>
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={handleTriggerReminders}
               disabled={isSendingReminder}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors"
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors cursor-pointer"
             >
               <Clock className="w-3.5 h-3.5" />
               <span>{isSendingReminder ? 'Checking Routine...' : 'Trigger 10-Min Reminders'}</span>
             </button>
             <button
+              onClick={handleScan50Milestone}
+              disabled={isScanning}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 transition-colors cursor-pointer shadow-sm"
+              title="Inspect every enrolled student when ~50% classes have been held"
+            >
+              <ShieldAlert className="w-3.5 h-3.5" />
+              <span>{isScanning ? 'Evaluating...' : 'Trigger 50% Milestone Early Warning Scan'}</span>
+            </button>
+            <button
               onClick={handleScanWarnings}
               disabled={isScanning}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 transition-colors"
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer"
             >
-              <AlertTriangle className="w-3.5 h-3.5" />
-              <span>{isScanning ? 'Evaluating...' : 'Scan & Send <60% Warnings'}</span>
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+              <span>Scan All &lt;60% Warnings</span>
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Live Email Delivery Verification & Authorized Test Panel */}
+      <div className="bg-gradient-to-r from-blue-950 via-slate-900 to-indigo-950 rounded-2xl p-5 text-white border border-blue-800/40 shadow-sm space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center space-x-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+            <h4 className="font-bold text-xs uppercase tracking-wider text-cyan-300">
+              Live Real Warning Email Verification Tool
+            </h4>
+          </div>
+          <span className="text-[11px] font-mono text-slate-300">
+            Target: Student Sabbir Hossain (CSE-26003) &bull; CSE-1101 (50.0% Attended)
+          </span>
+        </div>
+
+        <p className="text-xs text-slate-300 leading-relaxed">
+          Verify live outbound delivery through real Google SMTP (<code className="text-cyan-300 font-mono">smtp.gmail.com:587</code>). This dispatches an official academic attendance warning letter containing all 8 eligibility metrics directly to your verified inbox.
+        </p>
+
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1">
+          <div className="relative flex-1">
+            <Mail className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="email"
+              value={testRecipientEmail}
+              onChange={e => setTestRecipientEmail(e.target.value)}
+              placeholder="sabbirstudy2002@gmail.com"
+              className="w-full pl-9 pr-3 py-2 bg-slate-900/90 border border-slate-700 rounded-xl text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-cyan-400"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleVerifySmtpConnection}
+              disabled={isVerifyingSmtp}
+              className="px-3 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-colors cursor-pointer flex items-center space-x-1.5"
+              title="Test connection and TLS handshake with SMTP host"
+            >
+              <RotateCw className={`w-3.5 h-3.5 ${isVerifyingSmtp ? 'animate-spin' : ''}`} />
+              <span>{isVerifyingSmtp ? 'Testing...' : 'Verify SMTP Handshake'}</span>
+            </button>
+
+            <button
+              onClick={handleSendLiveTestWarning}
+              disabled={isTestingDelivery || !testRecipientEmail}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition-colors cursor-pointer flex items-center space-x-1.5 shadow-md"
+              title="Dispatch complete 8-metric attendance warning email to test recipient"
+            >
+              <Send className={`w-3.5 h-3.5 ${isTestingDelivery ? 'animate-bounce' : ''}`} />
+              <span>{isTestingDelivery ? 'Sending Live Email...' : 'Send Live Warning Email'}</span>
+            </button>
+          </div>
+        </div>
+
+        {liveTestResult && (
+          <div
+            className={`p-3 rounded-xl text-xs flex items-start space-x-2 border ${
+              liveTestResult.success
+                ? 'bg-emerald-950/70 border-emerald-500/50 text-emerald-200'
+                : 'bg-rose-950/70 border-rose-500/50 text-rose-200'
+            }`}
+          >
+            {liveTestResult.success ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+            ) : (
+              <XCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+            )}
+            <div className="space-y-0.5 font-mono text-[11px]">
+              <div className="font-bold">{liveTestResult.message}</div>
+              {liveTestResult.messageId && (
+                <div className="text-emerald-300">Message-ID: {liveTestResult.messageId}</div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {emailLogs.some(l => l.status === 'FAILED' && (l.error?.includes('535') || l.error?.includes('App Password') || l.error?.includes('Password not accepted'))) && (
@@ -357,40 +526,96 @@ export const AdminEmailAndRiskManagement: React.FC<AdminEmailAndRiskManagementPr
         </div>
       )}
 
-      {/* SECTION 1: LOW ATTENDANCE WATCHLIST (<60%) */}
+      {/* SECTION 1: 50% COURSE MILESTONE & 60% EXAM ELIGIBILITY EARLY WARNING INSPECTOR */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-amber-50/50">
+        <div className="p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-amber-50/70 via-slate-50 to-indigo-50/40">
           <div>
             <div className="flex items-center space-x-2">
               <span className="w-6 h-6 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
-                <AlertTriangle className="w-3.5 h-3.5" />
+                <ShieldAlert className="w-3.5 h-3.5" />
               </span>
               <h3 className="font-bold text-slate-900 text-sm">
-                Low Attendance Risk Watchlist (&lt;60% Exam Disqualification)
+                50% Course Milestone & 60% Exam Eligibility Early Warning Inspector
               </h3>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Targeted students at risk of semester final exam ineligibility. Required future classes calculated via:
-              <code className="ml-1 text-slate-700 font-mono font-bold">
-                Required = max(0, ceil((0.60 * Total Held - Attended) / 0.40))
-              </code>
+              Continuous monitoring of all courses at ~50% progress. Identifies students below 60%, students at risk, and students mathematically unable to reach 60%.
             </p>
           </div>
 
-          <span className="text-xs font-mono px-2.5 py-1 rounded-full font-bold bg-rose-100 text-rose-700">
-            {lowAttendanceList.length} At-Risk Cohort Cases
-          </span>
+          <div className="flex items-center space-x-2">
+            <span className="text-xs font-mono px-2.5 py-1 rounded-full font-bold bg-amber-100 text-amber-800 border border-amber-200">
+              {countBelow60} &lt;60% Cases
+            </span>
+            <span className="text-xs font-mono px-2.5 py-1 rounded-full font-bold bg-rose-100 text-rose-700 border border-rose-200">
+              {countBarred} Mathematically Barred
+            </span>
+          </div>
         </div>
 
-        <div className="p-3 border-b border-slate-100 bg-white">
-          <div className="relative w-full sm:w-72">
+        {/* Filter Tabs for Early Warning Categories */}
+        <div className="px-5 py-3 border-b border-slate-200 bg-slate-50/50 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold">
+            <button
+              onClick={() => setRiskFilter('ALL')}
+              className={`px-3 py-1 rounded-lg transition-all ${
+                riskFilter === 'ALL'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              All Students ({allEarlyWarningItems.length})
+            </button>
+            <button
+              onClick={() => setRiskFilter('MILESTONE_50')}
+              className={`px-3 py-1 rounded-lg transition-all ${
+                riskFilter === 'MILESTONE_50'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              50% Milestone Courses ({countMilestone50})
+            </button>
+            <button
+              onClick={() => setRiskFilter('BELOW_60')}
+              className={`px-3 py-1 rounded-lg transition-all ${
+                riskFilter === 'BELOW_60'
+                  ? 'bg-rose-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              Current &lt;60% ({countBelow60})
+            </button>
+            <button
+              onClick={() => setRiskFilter('CAN_REACH')}
+              className={`px-3 py-1 rounded-lg transition-all ${
+                riskFilter === 'CAN_REACH'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              Can Still Reach 60% ({countCanReach})
+            </button>
+            <button
+              onClick={() => setRiskFilter('BARRED')}
+              className={`px-3 py-1 rounded-lg transition-all ${
+                riskFilter === 'BARRED'
+                  ? 'bg-red-700 text-white shadow-xs'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              Mathematically Barred ({countBarred})
+            </button>
+          </div>
+
+          <div className="relative w-full sm:w-64">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search by student, roll, or course..."
+              placeholder="Search student, roll, course..."
               value={riskSearch}
               onChange={e => setRiskSearch(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
             />
           </div>
         </div>
@@ -399,62 +624,136 @@ export const AdminEmailAndRiskManagement: React.FC<AdminEmailAndRiskManagementPr
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
               <tr>
-                <th className="py-3 px-4">Student</th>
-                <th className="py-3 px-4">Course</th>
-                <th className="py-3 px-4">Held</th>
-                <th className="py-3 px-4">Attended</th>
-                <th className="py-3 px-4">Missed</th>
-                <th className="py-3 px-4">Attendance %</th>
-                <th className="py-3 px-4">Next Required Classes (to 60%)</th>
-                <th className="py-3 px-4">Exam Status</th>
-                <th className="py-3 px-4 text-right">Action</th>
+                <th className="py-3 px-3">Student</th>
+                <th className="py-3 px-3">Course & Progress</th>
+                <th className="py-3 px-3 text-center">Classes Held / Total</th>
+                <th className="py-3 px-3 text-center">Attended (Eff.)</th>
+                <th className="py-3 px-3 text-center">Current %</th>
+                <th className="py-3 px-3 text-center">Remaining</th>
+                <th className="py-3 px-3 text-center">Min Addl. to 60%</th>
+                <th className="py-3 px-3">Mathematical Possibility</th>
+                <th className="py-3 px-3 text-center">Exam Status</th>
+                <th className="py-3 px-3 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredRisk.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-slate-400">
-                    No students currently below the 60% attendance threshold.
+                  <td colSpan={10} className="py-8 text-center text-slate-400">
+                    No student cases found matching current filters.
                   </td>
                 </tr>
               ) : (
-                filteredRisk.map((item, idx) => (
-                  <tr key={idx} className="hover:bg-amber-50/30 transition-colors">
-                    <td className="py-3 px-4">
-                      <div className="font-bold text-slate-900">{item.student.name}</div>
-                      <div className="text-[10px] text-slate-400 font-mono">{item.student.studentId}</div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="font-bold font-mono text-indigo-700">{item.course.code}</span>
-                      <div className="text-[10px] text-slate-500 truncate max-w-xs">{item.course.name}</div>
-                    </td>
-                    <td className="py-3 px-4 font-mono font-bold text-slate-800">{item.conducted}</td>
-                    <td className="py-3 px-4 font-mono text-emerald-600 font-bold">{item.attended}</td>
-                    <td className="py-3 px-4 font-mono text-rose-600 font-bold">{item.missed}</td>
-                    <td className="py-3 px-4">
-                      <span className="font-extrabold font-mono text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                        {item.percentage.toFixed(1)}%
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 font-mono font-extrabold text-indigo-900">
-                      {item.requiredToRecover} consecutive classes
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">
-                        BARRED (&lt;60%)
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <button
-                        onClick={() => handleSendSingleWarning(item)}
-                        className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition-colors"
-                      >
-                        <Send className="w-3 h-3" />
-                        <span>Send Warning</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                filteredRisk.map((item, idx) => {
+                  const a = item.analytics;
+                  const isBarred = !a.canReach60;
+                  const isBelow60 = a.attendancePercentage < 60.0;
+
+                  return (
+                    <tr
+                      key={idx}
+                      className={`hover:bg-slate-50/80 transition-colors ${
+                        isBarred ? 'bg-rose-50/30' : isBelow60 ? 'bg-amber-50/20' : ''
+                      }`}
+                    >
+                      <td className="py-3 px-3">
+                        <div className="font-bold text-slate-900">{item.student.name}</div>
+                        <div className="text-[10px] text-slate-400 font-mono">{item.student.studentId}</div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="flex items-center space-x-1.5">
+                          <span className="font-bold font-mono text-indigo-700">{item.course.code}</span>
+                          {a.isHalfwayMilestone && (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                              50% Held
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-500 truncate max-w-xs">{item.course.name}</div>
+                      </td>
+                      <td className="py-3 px-3 text-center font-mono">
+                        <span className="font-bold text-slate-800">{a.conductedClasses}</span>
+                        <span className="text-slate-400"> / {a.plannedClasses}</span>
+                        <div className="text-[10px] text-slate-500 font-sans">({a.courseProgressPercentage}%)</div>
+                      </td>
+                      <td className="py-3 px-3 text-center font-mono">
+                        <span className="font-bold text-emerald-600">{a.effectivePresentCount}</span>
+                        <div className="text-[10px] text-slate-400">({a.presentCount}P, {a.lateCount}L)</div>
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <span
+                          className={`font-mono font-extrabold px-2 py-0.5 rounded border text-xs ${
+                            a.attendancePercentage >= 60.0
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-rose-50 text-rose-700 border-rose-200'
+                          }`}
+                        >
+                          {a.attendancePercentage.toFixed(1)}%
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-center font-mono font-bold text-slate-700">
+                        {a.remainingClasses}
+                      </td>
+                      <td className="py-3 px-3 text-center font-mono">
+                        <span
+                          className={`font-extrabold ${
+                            a.minAdditionalClassesToPass > a.remainingClasses
+                              ? 'text-rose-600'
+                              : a.minAdditionalClassesToPass > 0
+                              ? 'text-amber-700'
+                              : 'text-emerald-700'
+                          }`}
+                        >
+                          {a.minAdditionalClassesToPass} classes
+                        </span>
+                      </td>
+                      <td className="py-3 px-3">
+                        {a.canReach60 ? (
+                          <span
+                            className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            title={`Max possible: ${a.maximumPossibleAttendance}%`}
+                          >
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            <span>Possible ({a.minAdditionalClassesToPass}/{a.remainingClasses} needed)</span>
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200"
+                            title={`Even attending all ${a.remainingClasses} remaining classes reaches max ${a.maximumPossibleAttendance}% (<60%)`}
+                          >
+                            <XCircle className="w-3 h-3 text-rose-600" />
+                            <span>Impossible (Max {a.maximumPossibleAttendance}%)</span>
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        {a.projectedExamStatus === 'PROJECTED_INELIGIBLE' ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                            BARRED (&lt;60%)
+                          </span>
+                        ) : a.projectedExamStatus === 'AT_RISK' ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                            AT RISK
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            ELIGIBLE
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-right">
+                        <button
+                          onClick={() => handleSendSingleWarning(item)}
+                          className="inline-flex items-center space-x-1 px-2 py-1 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition-colors cursor-pointer"
+                          title="Dispatch official early warning notification email"
+                        >
+                          <Send className="w-3 h-3" />
+                          <span>Warn</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

@@ -375,6 +375,201 @@ export function runAllAutomatedTests(): {
     );
   }
 
+  // 8. 50% Course Milestone & 60% Exam Eligibility Early Warning Suite (Prompt Requirements 1 & 2)
+  const scheduledOffering: CourseOffering = {
+    id: 'co-milestone-test',
+    courseId: 'c-1101',
+    departmentId: 'dept-cse',
+    academicSessionId: 'sess-test',
+    year: 1,
+    semester: 1,
+    batchId: 'batch-2026',
+    section: 'A',
+    plannedClasses: 35,
+    conductedClasses: 18, // 18 of 35 is >= 50% milestone (35 * 0.5 = 17.5 -> 17)
+    status: 'ACTIVE',
+  };
+
+  // Case A: Student Below 60%, but CAN STILL REACH 60% with remaining classes
+  // Total Scheduled: 35. Target = ceil(35 * 0.6) = 21 presents needed.
+  // Classes held: 18. Attended: 9. Current rate = (9 / 18) = 50.0% (< 60%).
+  // Remaining: 35 - 18 = 17 classes.
+  // Min additional needed = 21 - 9 = 12 classes.
+  // 12 <= 17 remaining, so CAN STILL REACH 60% (Max possible: (9 + 17) / 35 = 74.29%).
+  const recordsCaseA: AttendanceRecord[] = [
+    ...Array.from({ length: 9 }, (_, i) => ({
+      id: `rec-caseA-p-${i}`,
+      sessionId: `s-a-${i}`,
+      courseOfferingId: 'co-milestone-test',
+      studentId: 'stu-case-a',
+      timestamp: '2026-10-01T10:00:00Z',
+      method: 'QR' as const,
+      status: 'PRESENT' as const,
+      minutesLate: 5,
+    })),
+    ...Array.from({ length: 9 }, (_, i) => ({
+      id: `rec-caseA-ab-${i}`,
+      sessionId: `s-a-ab-${i}`,
+      courseOfferingId: 'co-milestone-test',
+      studentId: 'stu-case-a',
+      timestamp: '2026-10-02T10:00:00Z',
+      method: 'QR' as const,
+      status: 'ABSENT' as const,
+      minutesLate: 60,
+    })),
+  ];
+
+  const analyticsCaseA = computeStudentCourseAnalytics({
+    studentId: 'stu-case-a',
+    studentName: 'Case A Student',
+    studentRoll: 'ROLL-CASE-A',
+    courseOffering: scheduledOffering,
+    courseCode: 'CSE-1101',
+    courseName: 'Structured Programming',
+    credit: 3.0,
+    courseType: 'THEORY',
+    records: recordsCaseA,
+  });
+
+  assert(
+    '60% Early Warning Rule',
+    'Detects 50% Course Milestone reached (18 of 35 classes held)',
+    analyticsCaseA.isHalfwayMilestone === true,
+    'isHalfwayMilestone: true',
+    `isHalfwayMilestone: ${analyticsCaseA.isHalfwayMilestone}`
+  );
+
+  assert(
+    '60% Early Warning Rule',
+    'Student Case A: Current attendance below 60% (50.0%)',
+    analyticsCaseA.attendancePercentage === 50.0 && analyticsCaseA.examEligible === false,
+    '50.0% & examEligible: false',
+    `${analyticsCaseA.attendancePercentage}% & examEligible: ${analyticsCaseA.examEligible}`
+  );
+
+  assert(
+    '60% Early Warning Rule',
+    'Student Case A: Correct min additional classes needed (12 of 17 remaining)',
+    analyticsCaseA.minAdditionalClassesToPass === 12 && analyticsCaseA.remainingClasses === 17,
+    'minAdditional: 12, remaining: 17',
+    `minAdditional: ${analyticsCaseA.minAdditionalClassesToPass}, remaining: ${analyticsCaseA.remainingClasses}`
+  );
+
+  assert(
+    '60% Early Warning Rule',
+    'Student Case A: Reaching 60% is mathematically possible (canReach60 = true)',
+    analyticsCaseA.canReach60 === true && analyticsCaseA.projectedExamStatus === 'AT_RISK',
+    'canReach60: true, status: AT_RISK',
+    `canReach60: ${analyticsCaseA.canReach60}, status: ${analyticsCaseA.projectedExamStatus}`
+  );
+
+  // Case B: Student Below 60%, and MATHEMATICALLY UNABLE to reach 60%
+  // Total Scheduled: 35. Target: 21 presents needed.
+  // Held: 18. Attended: 3. Current rate = (3 / 18) = 16.67%.
+  // Remaining: 17 classes.
+  // Max possible presents = 3 + 17 = 20. Max possible attendance = 20 / 35 = 57.14% (< 60.0%).
+  // Min additional needed = 21 - 3 = 18. But only 17 remaining!
+  // Therefore, canReach60 = false, projectedExamStatus = 'PROJECTED_INELIGIBLE'.
+  const recordsCaseB: AttendanceRecord[] = [
+    ...Array.from({ length: 3 }, (_, i) => ({
+      id: `rec-caseB-p-${i}`,
+      sessionId: `s-b-${i}`,
+      courseOfferingId: 'co-milestone-test',
+      studentId: 'stu-case-b',
+      timestamp: '2026-10-01T10:00:00Z',
+      method: 'QR' as const,
+      status: 'PRESENT' as const,
+      minutesLate: 5,
+    })),
+    ...Array.from({ length: 15 }, (_, i) => ({
+      id: `rec-caseB-ab-${i}`,
+      sessionId: `s-b-ab-${i}`,
+      courseOfferingId: 'co-milestone-test',
+      studentId: 'stu-case-b',
+      timestamp: '2026-10-02T10:00:00Z',
+      method: 'QR' as const,
+      status: 'ABSENT' as const,
+      minutesLate: 60,
+    })),
+  ];
+
+  const analyticsCaseB = computeStudentCourseAnalytics({
+    studentId: 'stu-case-b',
+    studentName: 'Case B Student',
+    studentRoll: 'ROLL-CASE-B',
+    courseOffering: scheduledOffering,
+    courseCode: 'CSE-1101',
+    courseName: 'Structured Programming',
+    credit: 3.0,
+    courseType: 'THEORY',
+    records: recordsCaseB,
+  });
+
+  assert(
+    '60% Early Warning Rule',
+    'Student Case B: Mathematically unable to reach 60% even if attending 100% of remaining classes',
+    analyticsCaseB.canReach60 === false && analyticsCaseB.isMathematicallyImpossible === true,
+    'canReach60: false, isMathematicallyImpossible: true',
+    `canReach60: ${analyticsCaseB.canReach60}, isMathematicallyImpossible: ${analyticsCaseB.isMathematicallyImpossible}`
+  );
+
+  assert(
+    '60% Early Warning Rule',
+    'Student Case B: Correctly classified as PROJECTED_INELIGIBLE (Max possible 57.14% < 60%)',
+    analyticsCaseB.projectedExamStatus === 'PROJECTED_INELIGIBLE' && analyticsCaseB.maximumPossibleAttendance < 60.0,
+    'PROJECTED_INELIGIBLE & Max < 60.0%',
+    `${analyticsCaseB.projectedExamStatus} & Max ${analyticsCaseB.maximumPossibleAttendance}%`
+  );
+
+  // Case C: Student AT OR ABOVE 60%, but at risk if they miss future classes
+  // Total Scheduled: 35. Target: 21 presents.
+  // Held: 18. Attended: 11. Current rate = 11 / 18 = 61.11% (currently eligible).
+  // Remaining: 17. Min additional needed = 21 - 11 = 10 classes.
+  // If student misses more than 7 of the 17 remaining classes, they fall below 60%.
+  // Early warning category: AT_OR_ABOVE_60_AT_RISK.
+  const recordsCaseC: AttendanceRecord[] = [
+    ...Array.from({ length: 11 }, (_, i) => ({
+      id: `rec-caseC-p-${i}`,
+      sessionId: `s-c-${i}`,
+      courseOfferingId: 'co-milestone-test',
+      studentId: 'stu-case-c',
+      timestamp: '2026-10-01T10:00:00Z',
+      method: 'QR' as const,
+      status: 'PRESENT' as const,
+      minutesLate: 5,
+    })),
+    ...Array.from({ length: 7 }, (_, i) => ({
+      id: `rec-caseC-ab-${i}`,
+      sessionId: `s-c-ab-${i}`,
+      courseOfferingId: 'co-milestone-test',
+      studentId: 'stu-case-c',
+      timestamp: '2026-10-02T10:00:00Z',
+      method: 'QR' as const,
+      status: 'ABSENT' as const,
+      minutesLate: 60,
+    })),
+  ];
+
+  const analyticsCaseC = computeStudentCourseAnalytics({
+    studentId: 'stu-case-c',
+    studentName: 'Case C Student',
+    studentRoll: 'ROLL-CASE-C',
+    courseOffering: scheduledOffering,
+    courseCode: 'CSE-1101',
+    courseName: 'Structured Programming',
+    credit: 3.0,
+    courseType: 'THEORY',
+    records: recordsCaseC,
+  });
+
+  assert(
+    '60% Early Warning Rule',
+    'Student Case C: Current attendance >= 60% (61.11%) but flagged AT_OR_ABOVE_60_AT_RISK',
+    analyticsCaseC.attendancePercentage === 61.11 && analyticsCaseC.earlyWarningCategory === 'AT_OR_ABOVE_60_AT_RISK',
+    '61.11% & AT_OR_ABOVE_60_AT_RISK',
+    `${analyticsCaseC.attendancePercentage}% & ${analyticsCaseC.earlyWarningCategory}`
+  );
+
   const passedCount = results.filter(r => r.passed).length;
   const failedCount = results.filter(r => !r.passed).length;
 

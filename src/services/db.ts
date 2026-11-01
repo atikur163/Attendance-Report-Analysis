@@ -243,7 +243,7 @@ const INITIAL_STATE: SystemDatabaseState = {
       id: 'stu-03',
       studentId: 'CSE-26003',
       name: 'Sabbir Hossain',
-      email: 'sabbir.h@mbstu.ac.bd',
+      email: 'sabbirstudy2002@gmail.com',
       departmentId: 'dept-cse',
       academicSessionId: 'sess-2025-2026',
       year: 1,
@@ -379,7 +379,117 @@ const INITIAL_STATE: SystemDatabaseState = {
     },
   ],
   attendanceRecords: [
-    { id: 'rec-01', sessionId: 'sess-today-active', courseOfferingId: 'co-1101', studentId: 'stu-01', timestamp: new Date().toISOString(), method: 'QR', status: 'PRESENT', minutesLate: 5 },
+    // Tanvir Islam (stu-01) in co-ict-1101 (Planned: 35, Conducted: 18)
+    // 11 Presents out of 18 held = 61.11% (Eligible now, but May Fail if future classes missed)
+    ...Array.from({ length: 11 }, (_, i) => ({
+      id: `rec-stu01-p-${i + 1}`,
+      sessionId: `sess-ict1101-${i + 1}`,
+      courseOfferingId: 'co-ict-1101',
+      studentId: 'stu-01',
+      timestamp: `2026-09-${String(i + 1).padStart(2, '0')}T10:00:00Z`,
+      method: 'QR' as const,
+      status: 'PRESENT' as const,
+      minutesLate: 4,
+    })),
+    ...Array.from({ length: 7 }, (_, i) => ({
+      id: `rec-stu01-a-${i + 1}`,
+      sessionId: `sess-ict1101-${i + 12}`,
+      courseOfferingId: 'co-ict-1101',
+      studentId: 'stu-01',
+      timestamp: `2026-10-${String(i + 1).padStart(2, '0')}T10:00:00Z`,
+      method: 'QR' as const,
+      status: 'ABSENT' as const,
+      minutesLate: 60,
+    })),
+
+    // Farhana Yasmin (stu-02) in co-1101 (Planned: 35, Conducted: 22)
+    // 19 Effective Presents out of 22 held = 86.36% (Safe and Eligible)
+    ...Array.from({ length: 17 }, (_, i) => ({
+      id: `rec-stu02-p-${i + 1}`,
+      sessionId: `sess-1101-${i + 1}`,
+      courseOfferingId: 'co-1101',
+      studentId: 'stu-02',
+      timestamp: `2026-09-${String(i + 1).padStart(2, '0')}T10:00:00Z`,
+      method: 'QR' as const,
+      status: 'PRESENT' as const,
+      minutesLate: 3,
+    })),
+    {
+      id: 'rec-stu02-late-1',
+      sessionId: 'sess-1101-18',
+      courseOfferingId: 'co-1101',
+      studentId: 'stu-02',
+      timestamp: '2026-10-01T10:00:00Z',
+      method: 'QR' as const,
+      status: 'LATE' as const,
+      minutesLate: 22,
+    },
+    {
+      id: 'rec-stu02-late-2',
+      sessionId: 'sess-1101-19',
+      courseOfferingId: 'co-1101',
+      studentId: 'stu-02',
+      timestamp: '2026-10-03T10:00:00Z',
+      method: 'QR' as const,
+      status: 'LATE' as const,
+      minutesLate: 24,
+    },
+    ...Array.from({ length: 3 }, (_, i) => ({
+      id: `rec-stu02-a-${i + 1}`,
+      sessionId: `sess-1101-${i + 20}`,
+      courseOfferingId: 'co-1101',
+      studentId: 'stu-02',
+      timestamp: `2026-10-${String(i + 5).padStart(2, '0')}T10:00:00Z`,
+      method: 'QR' as const,
+      status: 'ABSENT' as const,
+      minutesLate: 60,
+    })),
+
+    // Sabbir Hossain (stu-03) in co-1101 (Planned: 35, Conducted: 22, Remaining: 13)
+    // 11 Effective Presents out of 22 = 50.0% (<60%, but CAN REACH 60% by attending 10 of 13 remaining)
+    ...Array.from({ length: 11 }, (_, i) => ({
+      id: `rec-stu03-p-${i + 1}`,
+      sessionId: `sess-1101-${i + 1}`,
+      courseOfferingId: 'co-1101',
+      studentId: 'stu-03',
+      timestamp: `2026-09-${String(i + 1).padStart(2, '0')}T10:00:00Z`,
+      method: 'QR' as const,
+      status: 'PRESENT' as const,
+      minutesLate: 5,
+    })),
+    ...Array.from({ length: 11 }, (_, i) => ({
+      id: `rec-stu03-a-${i + 1}`,
+      sessionId: `sess-1101-${i + 12}`,
+      courseOfferingId: 'co-1101',
+      studentId: 'stu-03',
+      timestamp: `2026-10-${String(i + 1).padStart(2, '0')}T10:00:00Z`,
+      method: 'QR' as const,
+      status: 'ABSENT' as const,
+      minutesLate: 60,
+    })),
+
+    // Sabbir Hossain (stu-03) in co-1103 (Planned: 35, Conducted: 20, Remaining: 15)
+    // 4 Presents out of 20 = 20.0% (Needs 17 classes, only 15 left -> MATHEMATICALLY IMPOSSIBLE)
+    ...Array.from({ length: 4 }, (_, i) => ({
+      id: `rec-stu03-c1103-p-${i + 1}`,
+      sessionId: `sess-1103-${i + 1}`,
+      courseOfferingId: 'co-1103',
+      studentId: 'stu-03',
+      timestamp: `2026-09-${String(i + 1).padStart(2, '0')}T11:00:00Z`,
+      method: 'QR' as const,
+      status: 'PRESENT' as const,
+      minutesLate: 2,
+    })),
+    ...Array.from({ length: 16 }, (_, i) => ({
+      id: `rec-stu03-c1103-a-${i + 1}`,
+      sessionId: `sess-1103-${i + 5}`,
+      courseOfferingId: 'co-1103',
+      studentId: 'stu-03',
+      timestamp: `2026-10-${String(i + 1).padStart(2, '0')}T11:00:00Z`,
+      method: 'QR' as const,
+      status: 'ABSENT' as const,
+      minutesLate: 60,
+    })),
   ],
   attendanceCorrections: [],
   faceLogs: [],
@@ -438,6 +548,7 @@ class DatabaseService {
           courseOfferings: mergeById(INITIAL_STATE.courseOfferings, parsed.courseOfferings),
           teacherAssignments: mergeById(INITIAL_STATE.teacherAssignments, parsed.teacherAssignments),
           studentEnrollments: mergeById(INITIAL_STATE.studentEnrollments, parsed.studentEnrollments),
+          attendanceRecords: mergeById(INITIAL_STATE.attendanceRecords, parsed.attendanceRecords),
           routines: mergeById(INITIAL_STATE.routines, parsed.routines),
           settings: { ...DEFAULT_SYSTEM_SETTINGS, ...(parsed.settings || {}) },
         };
@@ -482,6 +593,12 @@ class DatabaseService {
           this.state.batches.find(b => b.departmentId === 'dept-eee' && b.currentYear === student.year) ||
           this.state.batches.find(b => b.departmentId === 'dept-eee');
         if (matchingBatch) student.batchId = matchingBatch.id;
+        modified = true;
+      }
+
+      // Ensure Sabbir Hossain (stu-03) has verified recipient email sabbirstudy2002@gmail.com
+      if ((student.id === 'stu-03' || student.studentId === 'CSE-26003') && student.email !== 'sabbirstudy2002@gmail.com') {
+        student.email = 'sabbirstudy2002@gmail.com';
         modified = true;
       }
     }

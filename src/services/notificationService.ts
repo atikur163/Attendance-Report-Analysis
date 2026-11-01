@@ -6,7 +6,7 @@
 
 import { computeStudentCourseAnalytics } from './attendanceEngine';
 import { db } from './db';
-import { Course, CourseOffering, EmailLog, RoutineEntry, Student, Teacher } from '../types';
+import { Course, CourseOffering, EmailLog, RoutineEntry, Student, Teacher, StudentCourseAnalytics } from '../types';
 
 export interface EmailDispatchResult {
   success: boolean;
@@ -251,28 +251,151 @@ export class NotificationService {
   }
 
   /**
-   * Automatic Student Attendance Warning Email (< 60%)
-   * Formula: Required Classes = Math.max(0, Math.ceil((0.60 * Total Held - Attended) / 0.40))
+   * Generates official notification email text containing all 8 required metrics
+   */
+  public static buildEarlyWarningEmailText(params: {
+    student: Student;
+    departmentName: string;
+    course: Course;
+    analytics: ReturnType<typeof computeStudentCourseAnalytics>;
+    isMilestone50?: boolean;
+  }): { subject: string; text: string } {
+    const { student, departmentName, course, analytics, isMilestone50 } = params;
+
+    const totalHeld = analytics.conductedClasses;
+    const attended = analytics.effectivePresentCount;
+    const currentRate = analytics.attendancePercentage.toFixed(1);
+    const totalScheduled = analytics.plannedClasses;
+    const remaining = analytics.remainingClasses;
+    const minNeeded = analytics.minAdditionalClassesToPass;
+    const isPossible = analytics.canReach60;
+    const status = analytics.projectedExamStatus;
+
+    const prefix = isMilestone50 ? '⚠️ [50% MIDPOINT EARLY WARNING]' : '⚠️ [ATTENDANCE WARNING]';
+
+    const subject = `${prefix} ${course.code}: ${
+      status === 'PROJECTED_INELIGIBLE'
+        ? 'Mathematically Ineligible for Examination'
+        : '60% Attendance Exam Risk Notice'
+    } - ${student.studentId}`;
+
+    let feasibilityExplanation = '';
+    if (!isPossible) {
+      feasibilityExplanation = `• Mathematical Feasibility: IMPOSSIBLE (Even if you attend 100% of all ${remaining} remaining classes, your maximum possible attendance will only be ${analytics.maximumPossibleAttendance}%, which is below the mandatory 60.0% threshold).`;
+    } else if (minNeeded > 0) {
+      feasibilityExplanation = `• Mathematical Feasibility: POSSIBLE (You can reach 60% by attending at least ${minNeeded} of the ${remaining} remaining classes).`;
+    } else {
+      feasibilityExplanation = `• Mathematical Feasibility: SECURED (You have already satisfied the minimum required attendances for this course).`;
+    }
+
+    let statusDescription = '';
+    if (status === 'PROJECTED_INELIGIBLE') {
+      statusDescription = 'PROJECTED INELIGIBLE / STRICTLY BARRED FROM FINAL EXAM';
+    } else if (status === 'AT_RISK') {
+      statusDescription = analytics.attendancePercentage < 60
+        ? 'CURRENTLY INELIGIBLE (<60%) - AT SEVERE RISK (ACTION REQUIRED)'
+        : 'AT RISK - Attendance buffer is low, missing upcoming classes will cause exam disqualification';
+    } else {
+      statusDescription = 'ELIGIBLE (Currently on track for examination)';
+    }
+
+    const text = `Dear ${student.name} (Roll / ID: ${student.studentId}),
+
+This is an official university academic attendance notification from the Office of Academic Affairs regarding your course:
+
+Course: ${course.code} - ${course.name}
+Department: ${departmentName}
+Academic Milestone: ${isMilestone50 ? '50% Course Progress Milestone Reached' : 'Mid-Semester Attendance Review'}
+
+============================================================
+ACADEMIC ATTENDANCE & EXAMINATION ELIGIBILITY METRICS:
+============================================================
+1. Total Classes Held So Far: ${totalHeld}
+2. Number of Classes Attended: ${attended} (Present: ${analytics.presentCount}, Late: ${analytics.lateCount}, Penalties: ${analytics.penaltyCount})
+3. Current Attendance Percentage: ${currentRate}%
+4. Total Classes Scheduled for Entire Course: ${totalScheduled}
+5. Remaining Classes to be Conducted: ${remaining}
+6. Minimum Additional Classes You Must Attend to Reach 60%: ${minNeeded}
+7. Mathematical Possibility to Reach 60%: ${isPossible ? 'YES - ATTAINABLE' : 'NO - MATHEMATICALLY BARRED'}
+${feasibilityExplanation}
+8. Examination Eligibility Status: ${statusDescription}
+============================================================
+
+MANDATORY UNIVERSITY REGULATION:
+Under university regulations, every student must maintain at least 60.0% attendance in each course to be eligible to sit for the semester final examinations. Students who fail to reach 60% are strictly barred from the exams.
+
+${
+  !isPossible
+    ? 'CRITICAL ADVISORY: You have become mathematically unable to reach 60% attendance in this course. You must contact your course teacher, head of department, or academic advisor immediately regarding academic probation policies.'
+    : minNeeded > 0
+    ? `URGENT ACTION REQUIRED: You must attend at least ${minNeeded} more classes without unexcused absences to ensure your exam eligibility. Please attend all upcoming sessions.`
+    : 'Keep up your consistent attendance to maintain your exam eligibility.'
+}
+
+Best regards,
+Office of Academic Affairs & Controller of Examinations
+Mawlana Bhashani Science and Technology University (MBSTU)`;
+
+    return { subject, text };
+  }
+
+  /**
+   * Automatic Student Attendance Warning Email (< 60% or At Risk)
    */
   public static async scanAndSendStudentRiskWarnings(): Promise<{ warningsSent: number; details: string[] }> {
+    return this.triggerHalfwayCourseEarlyWarnings();
+  }
+
+  /**
+   * Trigger Early Warning Inspection for Courses After ~50% of Classes Have Been Held (Section 2)
+   * Also covers any course offering or specific offering passed as argument.
+   */
+  public static async triggerHalfwayCourseEarlyWarnings(targetOfferingId?: string): Promise<{
+    warningsSent: number;
+    inspectedCount: number;
+    atRiskCount: number;
+    ineligibleCount: number;
+    details: string[];
+  }> {
     const students = db.getStudents();
     const enrollments = db.getStudentEnrollments();
     const offerings = db.getCourseOfferings();
     const courses = db.getCourses();
     const records = db.getAttendanceRecords();
+    const departments = db.getDepartments();
     const settings = db.getSettings();
 
     let warningsSent = 0;
+    let inspectedCount = 0;
+    let atRiskCount = 0;
+    let ineligibleCount = 0;
     const details: string[] = [];
 
-    for (const student of students) {
-      const studentEnrs = enrollments.filter(e => e.studentId === student.id && e.status === 'ENROLLED');
+    // Filter target offerings
+    const relevantOfferings = targetOfferingId
+      ? offerings.filter(o => o.id === targetOfferingId)
+      : offerings;
 
-      for (const enr of studentEnrs) {
-        const offering = offerings.find(o => o.id === enr.courseOfferingId);
-        if (!offering) continue;
-        const course = courses.find(c => c.id === offering.courseId);
-        if (!course) continue;
+    for (const offering of relevantOfferings) {
+      const course = courses.find(c => c.id === offering.courseId);
+      if (!course) continue;
+
+      const isHalfway = offering.conductedClasses >= Math.floor((offering.plannedClasses || 35) * 0.50);
+
+      // We inspect offerings if explicitly targeted, or if they have reached approx 50% milestone, or have held classes
+      if (!targetOfferingId && !isHalfway && offering.conductedClasses < 1) {
+        continue;
+      }
+
+      const offeringEnrollments = enrollments.filter(
+        e => e.courseOfferingId === offering.id && e.status === 'ENROLLED'
+      );
+
+      for (const enr of offeringEnrollments) {
+        const student = students.find(s => s.id === enr.studentId);
+        if (!student) continue;
+
+        inspectedCount++;
 
         const courseRecords = records.filter(
           r => r.courseOfferingId === offering.id && r.studentId === student.id
@@ -291,22 +414,27 @@ export class NotificationService {
           settings,
         });
 
-        // Trigger warning if attendance < 60% and at least 1 class has been held
-        const totalHeld = analytics.conductedClasses;
-        const attended = analytics.presentCount;
-        const isBelowThreshold = analytics.attendancePercentage < 60.0 && totalHeld > 0;
+        const isBelow60 = analytics.attendancePercentage < 60.0;
+        const isBarred = !analytics.canReach60;
+        const isAtRisk = analytics.projectedExamStatus === 'AT_RISK';
 
-        if (isBelowThreshold) {
-          // Exact formula requested: Required Classes = max(0, ceil((0.60 * Total Held - Attended) / 0.40))
-          const requiredToRecover = Math.max(
-            0,
-            Math.ceil((0.60 * totalHeld - attended) / 0.40)
-          );
+        if (isBarred) ineligibleCount++;
+        else if (isAtRisk || isBelow60) atRiskCount++;
 
-          const dedupKey = `RISK_WARN_${student.id}_${offering.id}_${analytics.attendancePercentage}_${totalHeld}`;
+        // Send warning if student is below 60%, at risk, or mathematically barred
+        if (isBelow60 || isBarred || isAtRisk) {
+          const dept = departments.find(d => d.id === student.departmentId);
+          const deptName = dept?.name || 'Academic Department';
 
-          const subject = `⚠️ URGENT ATTENDANCE WARNING (<60%): ${course.code} - Exam Ineligibility Notice`;
-          const text = `Dear ${student.name} (Roll / ID: ${student.studentId}),\n\nThis is an official university academic attendance notification regarding your course:\n\nCourse: ${course.code} - ${course.name}\nDepartment: Computer Science and Engineering\n\nCurrent Attendance: ${analytics.attendancePercentage.toFixed(1)}%\nMandatory Exam Eligibility Threshold: 60.0%\n\nAcademic Breakdown:\n• Total Classes Held: ${totalHeld}\n• Classes Attended: ${attended} (Present: ${analytics.presentCount}, Late: ${analytics.lateCount})\n• Classes Missed: ${analytics.absentCount}\n• Mandatory Next Consecutive Classes Required to Reach 60%: ${requiredToRecover}\n• Examination Eligibility Status: NOT ELIGIBLE AT CURRENT ATTENDANCE\n\nImportant University Regulation:\nUnder university academic policy, any student whose final course attendance falls below 60.0% is disqualified from sitting for the semester final examinations.\n\nPlease attend all upcoming lectures without fail and consult your course teacher or academic advisor immediately.\n\nBest regards,\nOffice of Academic Affairs & Examination Control\nMawlana Bhashani Science and Technology University`;
+          const { subject, text } = this.buildEarlyWarningEmailText({
+            student,
+            departmentName: deptName,
+            course,
+            analytics,
+            isMilestone50: isHalfway,
+          });
+
+          const dedupKey = `EARLY_WARN_${student.id}_${offering.id}_${analytics.conductedClasses}_${analytics.attendancePercentage.toFixed(0)}`;
 
           const result = await this.dispatchServerEmail({
             to: student.email,
@@ -321,15 +449,89 @@ export class NotificationService {
 
           if (result.status === 'SENT') {
             warningsSent++;
-            details.push(`Warning sent to ${student.name} (${student.studentId}) for ${course.code}: ${analytics.attendancePercentage.toFixed(1)}%`);
+            details.push(
+              `Delivered warning to ${student.name} (${student.studentId}) for ${course.code}: ${analytics.attendancePercentage.toFixed(1)}% (${analytics.projectedExamStatus})`
+            );
           } else {
-            details.push(`Warning queued for ${student.name} for ${course.code} (${result.status})`);
+            details.push(
+              `Warning queued for ${student.name} for ${course.code} (${result.status}: ${analytics.attendancePercentage.toFixed(1)}%)`
+            );
           }
         }
       }
     }
 
-    return { warningsSent, details };
+    return {
+      warningsSent,
+      inspectedCount,
+      atRiskCount,
+      ineligibleCount,
+      details,
+    };
+  }
+
+  /**
+   * Send early warning notice to a single student for a specific course offering
+   */
+  public static async sendIndividualEarlyWarning(
+    target: string | StudentCourseAnalytics,
+    courseOfferingId?: string
+  ): Promise<EmailDispatchResult> {
+    const sId = typeof target === 'string' ? target : target.studentId;
+    const offId = typeof target === 'string' ? (courseOfferingId || '') : target.courseOfferingId;
+
+    const student = db.getStudents().find(s => s.id === sId);
+    const offering = db.getCourseOfferings().find(o => o.id === offId);
+    if (!student || !offering) {
+      return { success: false, status: 'FAILED', message: 'Student or course offering not found' };
+    }
+
+    const course = db.getCourses().find(c => c.id === offering.courseId);
+    if (!course) {
+      return { success: false, status: 'FAILED', message: 'Course details not found' };
+    }
+
+    const records = db
+      .getAttendanceRecords()
+      .filter(r => r.courseOfferingId === offering.id && r.studentId === student.id);
+    const settings = db.getSettings();
+    const dept = db.getDepartments().find(d => d.id === student.departmentId);
+
+    const analytics = computeStudentCourseAnalytics({
+      studentId: student.id,
+      studentName: student.name,
+      studentRoll: student.studentId,
+      courseOffering: offering,
+      courseCode: course.code,
+      courseName: course.name,
+      credit: course.credit,
+      courseType: course.type,
+      records,
+      settings,
+    });
+
+    const isHalfway = offering.conductedClasses >= Math.floor((offering.plannedClasses || 35) * 0.50);
+
+    const { subject, text } = this.buildEarlyWarningEmailText({
+      student,
+      departmentName: dept?.name || 'Department of Computer Science and Engineering',
+      course,
+      analytics,
+      isMilestone50: isHalfway,
+    });
+
+    const dedupKey = `SINGLE_WARN_${student.id}_${offering.id}_${Date.now()}`;
+
+    return this.dispatchServerEmail({
+      to: student.email,
+      recipientName: student.name,
+      recipientRole: 'STUDENT',
+      type: 'ATTENDANCE_WARNING',
+      courseOfferingId: offering.id,
+      subject,
+      text,
+      dedupKey,
+    });
   }
 
   /**

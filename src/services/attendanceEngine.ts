@@ -105,9 +105,9 @@ export function computeStudentCourseAnalytics(params: {
     settings = DEFAULT_SYSTEM_SETTINGS,
   } = params;
 
-  const planned = courseOffering.plannedClasses || 35;
+  const totalScheduled = Math.max(courseOffering.plannedClasses || 35, courseOffering.conductedClasses || 0);
   const conducted = courseOffering.conductedClasses || records.length || 0;
-  const remaining = Math.max(0, planned - conducted);
+  const remaining = Math.max(0, totalScheduled - conducted);
 
   let presentCount = 0;
   let absentCount = 0;
@@ -126,48 +126,83 @@ export function computeStudentCourseAnalytics(params: {
     presentCount + lateCount - (settings.threeLatePenaltyEnabled ? penaltyCount : 0)
   );
 
-  // Percentage calculation
+  // Current Attendance Percentage calculation (held so far)
   const attendancePercentage =
     conducted > 0
       ? Number(((effectivePresentCount / conducted) * 100).toFixed(2))
       : 100.0; // If no class conducted yet, default to 100%
 
-  // Exam Eligibility (Exact rule: >= 60.0% is eligible)
+  // Current Exam Eligibility based on classes held so far (threshold default 60.0%)
   const examEligible = attendancePercentage >= settings.examEligibilityThreshold;
 
-  // Maximum Possible Attendance Calculation:
-  // If student attends every remaining class: (effectivePresentCount + remaining) / planned * 100
+  // Maximum Possible Attendance Calculation (if student attends all remaining classes)
   const maxPossiblePresents = effectivePresentCount + remaining;
   const maximumPossibleAttendance =
-    planned > 0
-      ? Number(((maxPossiblePresents / planned) * 100).toFixed(2))
+    totalScheduled > 0
+      ? Number(((maxPossiblePresents / totalScheduled) * 100).toFixed(2))
       : 100.0;
 
-  // Required future attendance to reach 60% of planned classes:
-  // Minimum effective presents needed overall to achieve threshold:
+  // Target presents needed out of total scheduled classes to reach 60%
   const targetPresentsNeeded = Math.ceil(
-    (settings.examEligibilityThreshold / 100) * planned
+    (settings.examEligibilityThreshold / 100) * totalScheduled
   );
-  const requiredFutureAttendance = Math.max(
+
+  // Minimum additional classes student must attend to reach 60%
+  const minAdditionalClassesToPass = Math.max(
     0,
     targetPresentsNeeded - effectivePresentCount
   );
+  const requiredFutureAttendance = minAdditionalClassesToPass;
 
-  // Recoverability Check:
-  // If required future classes exceeds remaining classes, student CANNOT reach 60% even with 100% future attendance
-  const isRecoverable = maximumPossibleAttendance >= settings.examEligibilityThreshold;
+  // Mathematical Possibility & Recoverability Check:
+  // Can the student reach 60%? Yes, if min additional needed <= remaining classes
+  const canReach60 = maximumPossibleAttendance >= settings.examEligibilityThreshold;
+  const isRecoverable = canReach60;
+  const isMathematicallyImpossible = !canReach60;
 
-  // Risk Classification
+  // 50% Course Milestone Check
+  const courseProgressPercentage =
+    totalScheduled > 0
+      ? Number(((conducted / totalScheduled) * 100).toFixed(1))
+      : 0;
+  const isHalfwayMilestone = conducted >= Math.floor(totalScheduled * 0.50);
+
+  // Early Warning & Projected Exam Status Classification
+  let projectedExamStatus: 'ELIGIBLE' | 'AT_RISK' | 'PROJECTED_INELIGIBLE' = 'ELIGIBLE';
+  let earlyWarningCategory:
+    | 'BELOW_60_CAN_REACH'
+    | 'BELOW_60_CANNOT_REACH'
+    | 'AT_OR_ABOVE_60_SAFE'
+    | 'AT_OR_ABOVE_60_AT_RISK' = 'AT_OR_ABOVE_60_SAFE';
   let riskLevel: RiskLevel = 'SAFE';
 
-  if (!isRecoverable || attendancePercentage < settings.examEligibilityThreshold) {
+  if (isMathematicallyImpossible) {
+    // Mathematically unable to reach 60% even with 100% future attendance
+    projectedExamStatus = 'PROJECTED_INELIGIBLE';
+    earlyWarningCategory = 'BELOW_60_CANNOT_REACH';
     riskLevel = 'CRITICAL';
-  } else if (attendancePercentage >= 60.0 && attendancePercentage < 65.0) {
-    riskLevel = 'HIGH_RISK';
-  } else if (attendancePercentage >= 65.0 && attendancePercentage < 75.0) {
-    riskLevel = 'WARNING';
+  } else if (attendancePercentage < settings.examEligibilityThreshold) {
+    // Currently below 60%, but CAN still reach 60% if attends remaining classes
+    projectedExamStatus = 'AT_RISK';
+    earlyWarningCategory = 'BELOW_60_CAN_REACH';
+    riskLevel = 'CRITICAL';
   } else {
-    riskLevel = 'SAFE';
+    // Currently >= 60%
+    // Check if at risk of falling below 60% (needs to attend remaining classes or buffer is tight)
+    const maxFutureAbsencesAllowed = remaining - minAdditionalClassesToPass;
+    const isAtRisk =
+      minAdditionalClassesToPass > 0 &&
+      (attendancePercentage < 75.0 || maxFutureAbsencesAllowed < Math.ceil(remaining * 0.35));
+
+    if (isAtRisk) {
+      projectedExamStatus = 'AT_RISK';
+      earlyWarningCategory = 'AT_OR_ABOVE_60_AT_RISK';
+      riskLevel = attendancePercentage < 65.0 ? 'HIGH_RISK' : 'WARNING';
+    } else {
+      projectedExamStatus = 'ELIGIBLE';
+      earlyWarningCategory = 'AT_OR_ABOVE_60_SAFE';
+      riskLevel = 'SAFE';
+    }
   }
 
   return {
@@ -179,7 +214,7 @@ export function computeStudentCourseAnalytics(params: {
     courseName,
     credit,
     courseType,
-    plannedClasses: planned,
+    plannedClasses: totalScheduled,
     conductedClasses: conducted,
     remainingClasses: remaining,
     presentCount,
@@ -192,8 +227,15 @@ export function computeStudentCourseAnalytics(params: {
     examEligible,
     maximumPossibleAttendance,
     requiredFutureAttendance,
+    minAdditionalClassesToPass,
     consecutiveClassesToReach60: requiredFutureAttendance,
     isRecoverable,
+    canReach60,
+    isMathematicallyImpossible,
+    isHalfwayMilestone,
+    courseProgressPercentage,
+    projectedExamStatus,
+    earlyWarningCategory,
     riskLevel,
   };
 }

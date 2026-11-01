@@ -152,6 +152,10 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   const overallPercentage = totalConducted > 0 ? Number(((totalEffective / totalConducted) * 100).toFixed(1)) : 100.0;
   const criticalCourses = studentCourses.filter(sc => sc.analytics.riskLevel === 'CRITICAL');
   const warningCourses = studentCourses.filter(sc => sc.analytics.riskLevel === 'WARNING' || sc.analytics.riskLevel === 'HIGH_RISK');
+  const below60Courses = studentCourses.filter(sc => sc.analytics.attendancePercentage < 60.0);
+  const halfwayMilestoneCourses = studentCourses.filter(sc => sc.analytics.isHalfwayMilestone);
+  const barredCourses = studentCourses.filter(sc => !sc.analytics.canReach60);
+  const atRiskMidpointCourses = halfwayMilestoneCourses.filter(sc => sc.analytics.projectedExamStatus !== 'ELIGIBLE');
 
   // Find active attendance sessions for student's courses right now
   const activeSessions = db.getAttendanceSessions().filter(sess => {
@@ -247,19 +251,58 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         </div>
       </div>
 
-      {/* Attendance Warnings Banner (If Any Risk Courses) */}
-      {criticalCourses.length > 0 && (
-        <div className="bg-rose-50 border border-rose-300 rounded-xl p-4 flex items-start space-x-3 shadow-xs animate-pulse">
-          <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-          <div className="text-xs text-rose-900">
-            <p className="font-bold">
-              Critical Attendance Warning ({criticalCourses.length} Course Below 60% Exam Eligibility)
-            </p>
-            <p className="mt-0.5 text-rose-700">
-              Your attendance in{' '}
-              {criticalCourses.map(c => `${c.course.code} (${c.analytics.attendancePercentage}%)`).join(', ')}{' '}
-              violates the university minimum exam threshold. Automatic warning emails have been logged.
-            </p>
+      {/* 50% Milestone & 60% Attendance Early Warnings Banner */}
+      {(below60Courses.length > 0 || atRiskMidpointCourses.length > 0) && (
+        <div className="bg-gradient-to-r from-amber-50 to-rose-50 border border-amber-300 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3">
+          <div className="flex items-start space-x-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="text-xs space-y-1 w-full">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-extrabold text-slate-900 text-sm">
+                  Official Exam Eligibility Early Warning Notice (60% Minimum Attendance Rule)
+                </span>
+                {atRiskMidpointCourses.length > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-600 text-white shadow-xs">
+                    50% Course Milestone Reached
+                  </span>
+                )}
+              </div>
+              <p className="text-slate-700">
+                Under University Academic Regulations, you must maintain at least <strong>60% attendance</strong> in each course to sit for final semester examinations.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
+                {below60Courses.map(sc => (
+                  <div
+                    key={sc.offering.id}
+                    className={`p-2.5 rounded-xl border text-xs flex flex-col justify-between ${
+                      sc.analytics.canReach60
+                        ? 'bg-amber-100/60 border-amber-300 text-amber-900'
+                        : 'bg-rose-100/70 border-rose-300 text-rose-900'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between font-bold">
+                      <span>{sc.course.code} - {sc.course.name}</span>
+                      <span className="font-mono text-sm">{sc.analytics.attendancePercentage}%</span>
+                    </div>
+                    <div className="text-[11px] mt-1 space-y-0.5">
+                      <div>
+                        Attended: <strong>{sc.analytics.effectivePresentCount}</strong> / {sc.analytics.conductedClasses} held ({sc.analytics.remainingClasses} remaining of {sc.analytics.plannedClasses})
+                      </div>
+                      {sc.analytics.canReach60 ? (
+                        <div className="text-teal-800 font-semibold">
+                          Must attend at least <strong>{sc.analytics.minAdditionalClassesToPass}</strong> of {sc.analytics.remainingClasses} remaining classes to reach 60%.
+                        </div>
+                      ) : (
+                        <div className="text-rose-700 font-bold">
+                          Mathematically unable to reach 60% even with 100% future attendance (Max possible: {sc.analytics.maximumPossibleAttendance}%).
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -445,16 +488,23 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                         </span>
                       </div>
 
-                      {/* 60% Exam Eligibility Badge */}
-                      <span
-                        className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
-                          analytics.examEligible
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
-                            : 'bg-rose-50 text-rose-700 border-rose-300 animate-pulse'
-                        }`}
-                      >
-                        {analytics.examEligible ? 'Exam Eligible' : 'Ineligible (<60%)'}
-                      </span>
+                      {/* 60% Exam Eligibility Badge & 50% Milestone */}
+                      <div className="flex flex-col items-end space-y-1">
+                        <span
+                          className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                            analytics.examEligible
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                              : 'bg-rose-50 text-rose-700 border-rose-300'
+                          }`}
+                        >
+                          {analytics.examEligible ? 'Eligible (≥60%)' : 'Below 60%'}
+                        </span>
+                        {analytics.isHalfwayMilestone && (
+                          <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            50% Milestone
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <h4 className="font-bold text-slate-900 text-sm mt-2">{course.name}</h4>
@@ -463,8 +513,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                   {/* Attendance Percentage & Progress Bar */}
                   <div className="space-y-1.5">
                     <div className="flex items-baseline justify-between">
-                      <span className="text-xs text-slate-500 font-medium">Attendance Rate</span>
-                      <span className="text-xl font-extrabold text-slate-900">
+                      <span className="text-xs text-slate-500 font-medium">Current Attendance Rate</span>
+                      <span className="text-xl font-extrabold text-slate-900 font-mono">
                         {analytics.attendancePercentage}%
                       </span>
                     </div>
@@ -497,41 +547,61 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                       <div className="font-bold text-rose-700 text-sm">{analytics.absentCount}</div>
                     </div>
                     <div className="bg-slate-50 p-2 rounded-xl" title="3 consecutive lates = 1 penalty deduction">
-                      <div className="text-[10px] text-slate-400 font-medium">3-Late Pen.</div>
-                      <div className="font-bold text-slate-700 text-sm">{analytics.penaltyCount}</div>
+                      <div className="text-[10px] text-slate-400 font-medium">Attended</div>
+                      <div className="font-bold text-slate-800 text-sm">{analytics.effectivePresentCount}</div>
                     </div>
                   </div>
 
-                  {/* Academic Projections & Recoverability (Prompt Section 23) */}
+                  {/* 8-Metric Academic Projections & 60% Early Warning Calculations */}
                   <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 text-[11px] space-y-1.5">
                     <div className="flex items-center justify-between text-slate-600">
-                      <span>Classes Conducted:</span>
+                      <span>Total Scheduled / Held:</span>
                       <span className="font-bold text-slate-800">
-                        {analytics.conductedClasses} / {analytics.plannedClasses} (Remaining: {analytics.remainingClasses})
+                        {analytics.conductedClasses} / {analytics.plannedClasses} held ({analytics.courseProgressPercentage}%)
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-slate-600">
-                      <span>Max Possible Attendance:</span>
-                      <span className="font-bold text-slate-900 font-mono">
-                        {analytics.maximumPossibleAttendance}%
+                      <span>Remaining Classes:</span>
+                      <span className="font-bold text-slate-800 font-mono">
+                        {analytics.remainingClasses} classes
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-slate-600">
-                      <span>Required Future Classes:</span>
+                      <span>Min Additional to Hit 60%:</span>
                       <span className="font-bold text-indigo-700 font-mono">
-                        {analytics.requiredFutureAttendance} classes to hit 60%
+                        {analytics.minAdditionalClassesToPass === 0
+                          ? '0 classes (Threshold already secured)'
+                          : `${analytics.minAdditionalClassesToPass} more of ${analytics.remainingClasses} remaining`}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between pt-1 border-t border-slate-200">
-                      <span className="text-slate-500">Recoverability:</span>
+                    <div className="flex items-center justify-between text-slate-600">
+                      <span>Mathematical Feasibility:</span>
                       <span
                         className={`font-bold px-2 py-0.5 rounded text-[10px] border ${
-                          analytics.isRecoverable
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          analytics.canReach60
+                            ? 'bg-teal-50 text-teal-800 border-teal-200'
                             : 'bg-rose-50 text-rose-800 border-rose-200'
                         }`}
                       >
-                        {analytics.isRecoverable ? 'Recoverable' : 'CRITICAL / NOT RECOVERABLE'}
+                        {analytics.canReach60
+                          ? `Possible (Max ${analytics.maximumPossibleAttendance}%)`
+                          : `Impossible (Max ${analytics.maximumPossibleAttendance}%)`}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-200">
+                      <span className="text-slate-500">Projected Exam Status:</span>
+                      <span
+                        className={`font-bold px-2 py-0.5 rounded text-[10px] border ${
+                          analytics.projectedExamStatus === 'ELIGIBLE'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            : analytics.projectedExamStatus === 'AT_RISK'
+                            ? 'bg-amber-50 text-amber-800 border-amber-200'
+                            : 'bg-rose-50 text-rose-800 border-rose-200'
+                        }`}
+                      >
+                        {analytics.projectedExamStatus === 'ELIGIBLE' && 'ELIGIBLE TO SIT'}
+                        {analytics.projectedExamStatus === 'AT_RISK' && 'AT RISK OF BAR'}
+                        {analytics.projectedExamStatus === 'PROJECTED_INELIGIBLE' && 'BARRED FROM EXAM'}
                       </span>
                     </div>
                   </div>

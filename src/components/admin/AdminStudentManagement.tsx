@@ -72,6 +72,7 @@ export const AdminStudentManagement: React.FC<AdminStudentManagementProps> = ({
 
   // Edit Student Form State
   const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
   const [editYear, setEditYear] = useState(1);
   const [editSemester, setEditSemester] = useState(1);
   const [editSection, setEditSection] = useState('A');
@@ -105,6 +106,7 @@ export const AdminStudentManagement: React.FC<AdminStudentManagementProps> = ({
   const handleOpenEdit = (s: Student) => {
     setSelectedStudent(s);
     setEditName(s.name);
+    setEditEmail(s.email);
     setEditYear(s.year);
     setEditSemester(s.semester);
     setEditSection(s.section);
@@ -121,9 +123,14 @@ export const AdminStudentManagement: React.FC<AdminStudentManagementProps> = ({
       setEditError('Student name cannot be empty.');
       return;
     }
+    if (!editEmail.trim()) {
+      setEditError('Student email cannot be empty.');
+      return;
+    }
 
     const updated = db.updateStudent(selectedStudent.id, {
       name: editName.trim(),
+      email: editEmail.trim(),
       year: Number(editYear),
       semester: Number(editSemester),
       section: editSection.trim(),
@@ -783,6 +790,21 @@ export const AdminStudentManagement: React.FC<AdminStudentManagementProps> = ({
                   onChange={e => setEditName(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 font-medium"
                 />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Official / Notification Email Address</label>
+                <input
+                  type="email"
+                  required
+                  value={editEmail}
+                  onChange={e => setEditEmail(e.target.value)}
+                  placeholder="student@example.com"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono font-medium"
+                />
+                <span className="text-[10px] text-slate-500 mt-0.5 block">
+                  Official recipient address for 50% milestone early warning and attendance risk emails.
+                </span>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

@@ -90,8 +90,11 @@ export function checkStudentCourseEligibility(
   }
 
   // 5. Batch & Cohort Compatibility Check
-  // If strictBatch option is specifically requested, enforce exact batch match
-  if (options.strictBatch && offering.batchId && student.batchId !== offering.batchId) {
+  // Active/eligible students are entitled to enroll into designated department offerings (standard cohort, retake, or elective).
+  // Only if strictBatch is explicitly demanded AND student is not in that cohort do we restrict.
+  const isExactCohort = offering.batchId ? student.batchId === offering.batchId : true;
+
+  if (options.strictBatch && !isExactCohort) {
     const studentBatch = batches.find(b => b.id === student.batchId);
     const offeringBatch = batches.find(b => b.id === offering.batchId);
     const studentBatchName = studentBatch ? studentBatch.name : student.batchId;
@@ -105,13 +108,12 @@ export function checkStudentCourseEligibility(
   }
 
   // Eligible Active Student taking designated department course
-  const isExactCohort = offering.batchId ? student.batchId === offering.batchId : true;
   return {
     eligible: true,
     code: 'ELIGIBLE',
     reason: isExactCohort
-      ? 'Student meets regular cohort eligibility.'
-      : 'Eligible: Designated department curriculum offering (Cohort / Retake / Elective).',
+      ? 'Eligible: Standard cohort curriculum course.'
+      : 'Eligible: Designated department curriculum offering (Cross-batch / Retake / Elective).',
   };
 }
 
