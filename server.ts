@@ -11,7 +11,18 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+
+// AI Studio internal application server MUST bind to port 3000 (port 8080 is reserved for container nginx reverse-proxy)
+function resolveServerPort(): number {
+  const portArgIndex = process.argv.indexOf('--port');
+  if (portArgIndex !== -1 && process.argv[portArgIndex + 1]) {
+    const parsed = Number(process.argv[portArgIndex + 1]);
+    if (parsed && parsed !== 8080) return parsed;
+  }
+  return 3000;
+}
+
+const PORT = resolveServerPort();
 
 app.use(express.json());
 
@@ -277,24 +288,33 @@ app.post('/api/email/retry', async (req, res) => {
 
 // Start server with Vite middleware in dev or static files in production
 async function startServer() {
-  const isProduction = process.env.NODE_ENV === 'production';
+  try {
+    const isProduction = process.env.NODE_ENV === 'production';
 
-  if (!isProduction) {
-    const vite = await createViteServer({
-      server: { middlewareMode: true, hmr: false },
-      appType: 'spa',
+    if (!isProduction) {
+      const vite = await createViteServer({
+        server: { middlewareMode: true, hmr: false },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+    } else {
+      app.use(express.static(path.resolve(__dirname, 'dist')));
+      app.get('*', (req, res) => {
+        res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+      });
+    }
+
+    const server = app.listen(PORT, '0.0.0.0', () => {
+      console.log(`UniAttend Server running on http://0.0.0.0:${PORT}`);
     });
-    app.use(vite.middlewares);
-  } else {
-    app.use(express.static(path.resolve(__dirname, 'dist')));
-    app.get('*', (req, res) => {
-      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+
+    server.on('error', (err: any) => {
+      console.error(`Server fatal error on port ${PORT}:`, err);
     });
+  } catch (error) {
+    console.error('Fatal failure starting application server:', error);
+    process.exit(1);
   }
-
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`UniAttend Server running on http://0.0.0.0:${PORT}`);
-  });
 }
 
 startServer();

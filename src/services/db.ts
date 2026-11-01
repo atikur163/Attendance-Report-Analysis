@@ -1201,7 +1201,7 @@ class DatabaseService {
   public enrollStudent(
     studentId: string,
     courseOfferingId: string,
-    options?: { allowCrossBatch?: boolean }
+    options?: { allowCrossBatch?: boolean; strictBatch?: boolean }
   ): { success: boolean; message: string } {
     const student = this.state.students.find(s => s.id === studentId);
     const offering = this.state.courseOfferings.find(co => co.id === courseOfferingId);
@@ -1227,7 +1227,7 @@ class DatabaseService {
     }
 
     const enrollment: StudentEnrollment = {
-      id: 'enr-' + Date.now(),
+      id: 'enr-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
       studentId,
       courseOfferingId,
       enrolledAt: new Date().toISOString(),
@@ -1235,6 +1235,7 @@ class DatabaseService {
     };
     this.state.studentEnrollments.push(enrollment);
     this.saveLocalBackup();
+    this.notifyListeners();
 
     this.safeSetDoc(doc(firestoreDb, 'student_enrollments', enrollment.id), enrollment).catch(err => {
       handleFirestoreError(err, OperationType.CREATE, `student_enrollments/${enrollment.id}`);
@@ -1246,6 +1247,7 @@ class DatabaseService {
   public unenrollStudent(enrollmentId: string): void {
     this.state.studentEnrollments = this.state.studentEnrollments.filter(e => e.id !== enrollmentId);
     this.saveLocalBackup();
+    this.notifyListeners();
 
     deleteDoc(doc(firestoreDb, 'student_enrollments', enrollmentId)).catch(err => {
       handleFirestoreError(err, OperationType.DELETE, `student_enrollments/${enrollmentId}`);

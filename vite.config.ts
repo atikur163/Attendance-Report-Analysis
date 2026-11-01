@@ -1,7 +1,11 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig} from 'vite';
+import { fileURLToPath } from 'url';
+import { defineConfig } from 'vite';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export default defineConfig(() => {
   return {
@@ -12,7 +16,9 @@ export default defineConfig(() => {
       },
     },
     server: {
-      // HMR is disabled in AI Studio cloud preview environment to avoid reverse-proxy WebSocket errors.
+      port: 3000,
+      host: '0.0.0.0',
+      allowedHosts: true as const,
       hmr: false,
       watch: null,
     },

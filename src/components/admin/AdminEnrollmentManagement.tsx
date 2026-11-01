@@ -473,21 +473,21 @@ export const AdminEnrollmentManagement: React.FC<AdminEnrollmentManagementProps>
                             </td>
                             <td className="py-2.5 px-3">
                               {isEnrolled ? (
-                                <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                                  <Check className="w-3 h-3" />
+                                <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                  <Check className="w-3 h-3 text-emerald-400" />
                                   <span>Currently Enrolled</span>
                                 </span>
                               ) : eligibility.eligible ? (
-                                <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                                  <CheckCircle2 className="w-3 h-3" />
-                                  <span>Meets All Prerequisites</span>
+                                <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30" title={eligibility.reason}>
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                  <span>Eligible to Enroll</span>
                                 </span>
                               ) : (
                                 <span
-                                  className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                  className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30"
                                   title={eligibility.reason}
                                 >
-                                  <AlertTriangle className="w-3 h-3" />
+                                  <AlertTriangle className="w-3 h-3 text-amber-400" />
                                   <span>{eligibility.code.replace('_', ' ')}</span>
                                 </span>
                               )}
@@ -501,17 +501,20 @@ export const AdminEnrollmentManagement: React.FC<AdminEnrollmentManagementProps>
                                     );
                                     if (record) handleUnenroll(record.id, activeStudent.name, course?.code);
                                   }}
-                                  className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-[11px] font-bold transition"
+                                  className="px-2.5 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-[11px] font-bold transition flex items-center space-x-1 ml-auto cursor-pointer"
                                 >
-                                  Unenroll
+                                  <Trash2 className="w-3 h-3 mr-1" />
+                                  <span>Unenroll</span>
                                 </button>
                               ) : (
                                 <button
                                   onClick={() => handlePersonalizedEnroll(offering.id)}
                                   disabled={!eligibility.eligible}
-                                  className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold shadow-xs transition disabled:opacity-30 disabled:cursor-not-allowed"
+                                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-[11px] font-bold shadow-xs transition disabled:opacity-30 disabled:cursor-not-allowed flex items-center space-x-1 ml-auto cursor-pointer"
+                                  title={eligibility.eligible ? 'Add this course for student' : eligibility.reason}
                                 >
-                                  Enroll Now
+                                  <UserPlus className="w-3.5 h-3.5 mr-1" />
+                                  <span>Add Course</span>
                                 </button>
                               )}
                             </td>
