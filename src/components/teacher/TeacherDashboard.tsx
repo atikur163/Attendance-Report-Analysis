@@ -53,18 +53,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         (targetUid && t.authUid === targetUid) ||
         (userProfile.teacherId && (t.id === userProfile.teacherId || t.teacherId.toLowerCase() === userProfile.teacherId.toLowerCase()))
     );
-  } else {
-    // Admin or supervisor preview mode
+  } else if (userProfile?.role === 'ADMIN') {
+    // Admin supervisor preview mode: must explicitly specify teacherId or match admin's own assigned profile
     const effectiveTargetId = teacherId || userProfile?.teacherId;
     if (effectiveTargetId) {
       currentTeacher = teachers.find(
         t => t.id === effectiveTargetId || t.teacherId.toLowerCase() === effectiveTargetId.toLowerCase()
       );
-    } else if (targetEmail) {
-      currentTeacher = teachers.find(t => t.email.toLowerCase() === targetEmail);
-    }
-    if (!currentTeacher && teachers.length > 0) {
-      currentTeacher = teachers[0];
     }
   }
 

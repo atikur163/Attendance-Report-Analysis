@@ -260,22 +260,23 @@ export const LoginPage: React.FC = () => {
             <div className="flex items-center justify-between mb-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center space-x-1">
                 <Sparkles className="w-3 h-3 text-indigo-400" />
-                <span>Instant Demo Role Fill</span>
+                <span>Sandbox Evaluator Role Preview</span>
               </span>
-              <span className="text-[10px] text-slate-500 font-mono">1-Click Credentials</span>
+              <span className="text-[10px] text-amber-400 font-mono">Sample Profiles</span>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               <button
                 type="button"
-                onClick={() => handleQuickFill('it24026@mbstu.ac.bd', 'Admin@1234')}
+                onClick={() => handleQuickFill('sabbirstudy2002@gmail.com', '')}
                 className="p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20 hover:bg-indigo-500/20 text-indigo-300 text-left transition-colors"
+                title="Fill authorized University Administrator email"
               >
                 <div className="flex items-center space-x-1 font-bold text-[11px]">
                   <Shield className="w-3 h-3 text-indigo-400" />
-                  <span>Admin</span>
+                  <span>Admin Login</span>
                 </div>
-                <div className="text-[9px] text-slate-400 truncate mt-0.5">Superintendent</div>
+                <div className="text-[9px] text-slate-400 truncate mt-0.5">sabbirstudy2002</div>
               </button>
 
               <button

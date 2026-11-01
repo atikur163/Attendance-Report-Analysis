@@ -65,15 +65,13 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         (targetUid && s.authUid === targetUid) ||
         (userProfile.studentId && (s.id === userProfile.studentId || s.studentId.toLowerCase() === userProfile.studentId.toLowerCase()))
     );
-  } else {
-    // Admin or supervisor preview mode
+  } else if (userProfile?.role === 'ADMIN') {
+    // Admin supervisor preview mode: must explicitly specify studentId
     const effectiveTargetId = studentId || userProfile?.studentId;
     if (effectiveTargetId) {
       student = students.find(
         s => s.id === effectiveTargetId || s.studentId.toLowerCase() === effectiveTargetId.toLowerCase()
       );
-    } else if (targetEmail) {
-      student = students.find(s => s.email.toLowerCase() === targetEmail);
     }
   }
 

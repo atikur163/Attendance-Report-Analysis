@@ -350,9 +350,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         credential = await signInWithEmailAndPassword(auth, cleanEmail, pass);
       } catch (signInErr: any) {
-        // Auto-provision demo accounts if testing credentials on fresh Firebase instance
+        // Auto-provision sample sandbox accounts if testing sample faculty or student credentials
         const normalized = cleanEmail.toLowerCase();
-        const isDemoAdmin = normalized === 'it24026@mbstu.ac.bd' && pass === 'Admin@1234';
         const isDemoTeacher =
           (normalized === 'ahsan.habib@mbstu.ac.bd' ||
            normalized === 'nargisakter@mbstu.ac.bd' ||
@@ -364,7 +363,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
            normalized === 'sabbir.h@mbstu.ac.bd') &&
           pass === 'Student@1234';
 
-        if ((isDemoAdmin || isDemoTeacher || isDemoStudent) && (signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential')) {
+        if ((isDemoTeacher || isDemoStudent) && (signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential')) {
           credential = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
         } else {
           throw signInErr;

@@ -61,18 +61,16 @@ function AppContent() {
           (currentUser?.email ? db.findTeacher(currentUser.email) : undefined) ||
           (currentUser?.uid ? db.findTeacher(currentUser.uid) : undefined) ||
           db.findTeacher(userProfile.teacherId);
-        if (matched) {
-          setActiveTeacherId(matched.id);
-        }
+        setActiveTeacherId(matched ? matched.id : '');
+        setActiveStudentId('');
       } else if (userProfile.role === 'STUDENT') {
         const matched =
           db.findStudent(userProfile.email) ||
           (currentUser?.email ? db.findStudent(currentUser.email) : undefined) ||
           (currentUser?.uid ? db.findStudent(currentUser.uid) : undefined) ||
           db.findStudent(userProfile.studentId);
-        if (matched) {
-          setActiveStudentId(matched.id);
-        }
+        setActiveStudentId(matched ? matched.id : '');
+        setActiveTeacherId('');
       } else if (userProfile.role === 'ADMIN') {
         if (!activeTeacherId && teachers.length > 0) setActiveTeacherId(teachers[0].id);
         if (!activeStudentId && students.length > 0) setActiveStudentId(students[0].id);

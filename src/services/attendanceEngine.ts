@@ -109,15 +109,26 @@ export function computeStudentCourseAnalytics(params: {
   const conducted = courseOffering.conductedClasses || records.length || 0;
   const remaining = Math.max(0, totalScheduled - conducted);
 
+  // Deduplicate records by sessionId so multiple check-in logs for the same session never inflate counts
+  const uniqueRecordsMap = new Map<string, AttendanceRecord>();
+  for (const r of records) {
+    const key = r.sessionId ? `${r.sessionId}_${r.studentId}` : r.id;
+    const existing = uniqueRecordsMap.get(key);
+    if (!existing || (existing.status === 'ABSENT' && r.status !== 'ABSENT')) {
+      uniqueRecordsMap.set(key, r);
+    }
+  }
+  const cleanRecords = Array.from(uniqueRecordsMap.values());
+
   let presentCount = 0;
   let absentCount = 0;
 
-  for (const r of records) {
+  for (const r of cleanRecords) {
     if (r.status === 'PRESENT') presentCount++;
     else if (r.status === 'ABSENT') absentCount++;
   }
 
-  const { lateCount, consecutiveLateCount, penaltyCount } = calculateLatePenalties(records);
+  const { lateCount, consecutiveLateCount, penaltyCount } = calculateLatePenalties(cleanRecords);
 
   // Effective Attendance: Present + Late minus penalties
   // If penalty enabled: each 3-late penalty deducts 1 class from effective attendance

@@ -671,7 +671,7 @@ class DatabaseService {
       this.syncing = true;
       const isAdmin = role === 'ADMIN' || user.email === 'it24026@mbstu.ac.bd' || user.email === 'sabbirstudy2002@gmail.com';
       const isTeacher = role === 'TEACHER';
-      const studentId = profile?.studentId || 'stu-01';
+      const studentId = profile?.studentId || '';
 
       // 1. If Admin, check if database needs initial university seeding
       if (isAdmin) {

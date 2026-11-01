@@ -570,6 +570,114 @@ export function runAllAutomatedTests(): {
     `${analyticsCaseC.attendancePercentage}% & ${analyticsCaseC.earlyWarningCategory}`
   );
 
+  // 14. Edge Case: Zero Classes Conducted (Course not started yet)
+  const zeroOffering: CourseOffering = {
+    id: 'co-zero-test',
+    courseId: 'c-zero',
+    departmentId: 'dept-cse',
+    academicSessionId: 'sess-1',
+    year: 1,
+    semester: 1,
+    batchId: 'batch-test',
+    section: 'A',
+    plannedClasses: 35,
+    conductedClasses: 0,
+    status: 'ACTIVE',
+  };
+  const zeroAnalytics = computeStudentCourseAnalytics({
+    studentId: 'stu-zero',
+    studentName: 'Zero Student',
+    studentRoll: 'ROLL-ZERO',
+    courseOffering: zeroOffering,
+    courseCode: 'CSE-1101',
+    courseName: 'Structured Programming',
+    credit: 3.0,
+    courseType: 'THEORY',
+    records: [],
+  });
+  assert(
+    'Edge Case - Zero Classes',
+    'Course with zero classes held must not throw division-by-zero and require 21 future classes',
+    zeroAnalytics.conductedClasses === 0 && zeroAnalytics.minAdditionalClassesToPass === 21 && zeroAnalytics.canReach60 === true,
+    'Conducted: 0, Min Needed: 21, Can Reach: true',
+    `Conducted: ${zeroAnalytics.conductedClasses}, Min Needed: ${zeroAnalytics.minAdditionalClassesToPass}, Can Reach: ${zeroAnalytics.canReach60}`
+  );
+
+  // 15. Edge Case: Duplicate Records for the Same Session
+  const duplicateRecords: AttendanceRecord[] = [
+    {
+      id: 'rec-dup-1',
+      sessionId: 'sess-dup-101',
+      courseOfferingId: 'co-dup-test',
+      studentId: 'stu-dup',
+      timestamp: '2026-10-01T10:00:00Z',
+      method: 'QR',
+      status: 'PRESENT',
+      minutesLate: 5,
+    },
+    {
+      id: 'rec-dup-2',
+      sessionId: 'sess-dup-101', // Identical sessionId
+      courseOfferingId: 'co-dup-test',
+      studentId: 'stu-dup',
+      timestamp: '2026-10-01T10:01:00Z',
+      method: 'QR',
+      status: 'PRESENT',
+      minutesLate: 6,
+    },
+  ];
+  const dupOffering: CourseOffering = {
+    id: 'co-dup-test',
+    courseId: 'c-dup',
+    departmentId: 'dept-cse',
+    academicSessionId: 'sess-1',
+    year: 1,
+    semester: 1,
+    batchId: 'batch-test',
+    section: 'A',
+    plannedClasses: 35,
+    conductedClasses: 1,
+    status: 'ACTIVE',
+  };
+  const dupAnalytics = computeStudentCourseAnalytics({
+    studentId: 'stu-dup',
+    studentName: 'Dup Student',
+    studentRoll: 'ROLL-DUP',
+    courseOffering: dupOffering,
+    courseCode: 'CSE-1101',
+    courseName: 'Structured Programming',
+    credit: 3.0,
+    courseType: 'THEORY',
+    records: duplicateRecords,
+  });
+  assert(
+    'Edge Case - Duplicate Session Records',
+    'Multiple check-ins for the same sessionId must deduplicate to exactly 1 present',
+    dupAnalytics.effectivePresentCount === 1,
+    'Effective Presents: 1',
+    `Effective Presents: ${dupAnalytics.effectivePresentCount}`
+  );
+
+  // 16. Identity Mapping: Authenticated Teacher Must Resolve Strictly to Their Own Profile
+  const nargisTeacher = db.findTeacher('nargisakter@mbstu.ac.bd');
+  assert(
+    'Identity Mapping',
+    'Prof. Nargis Akter email must resolve strictly to TCH-103 and never Dr. Ahsan Habib (TCH-101)',
+    Boolean(nargisTeacher && nargisTeacher.teacherId === 'TCH-103' && nargisTeacher.id !== 'tch-01'),
+    'TeacherId: TCH-103, ID != tch-01',
+    `TeacherId: ${nargisTeacher?.teacherId}, ID: ${nargisTeacher?.id}`
+  );
+
+  // 17. Unassigned/Nonexistent Profile Fallback Prevention
+  const nonexistentTeacher = db.findTeacher('unknown.faculty@mbstu.ac.bd');
+  assert(
+    'Identity Mapping',
+    'Nonexistent teacher email must return undefined and never fall back to another teacher',
+    nonexistentTeacher === undefined,
+    'undefined',
+    String(nonexistentTeacher)
+  );
+
   const passedCount = results.filter(r => r.passed).length;
   const failedCount = results.filter(r => !r.passed).length;
 
