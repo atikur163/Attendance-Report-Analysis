@@ -49,8 +49,8 @@ export function calculateLatePenalties(records: AttendanceRecord[]): {
         penaltyCount++;
         currentConsecutive = 0; // Reset streak after penalty assessed
       }
-    } else if (rec.status === 'PRESENT') {
-      currentConsecutive = 0; // Reset consecutive streak on present
+    } else if (rec.status === 'PRESENT' || rec.status === 'EXCUSED') {
+      currentConsecutive = 0; // Reset consecutive streak on present or excused
     } else if (rec.status === 'ABSENT') {
       currentConsecutive = 0; // Reset consecutive streak on absent
     }
@@ -78,7 +78,11 @@ export function determineAttendanceStatus(
 
 /**
  * Computes complete analytics for a student in a course offering.
- * Centralizes formula: Attendance % = (Effective Present / Conducted) * 100
+ * Centralizes formula: Attendance % = (Effective Classes Attended / Conducted Classes) * 100
+ * As required:
+ * - Each course keeps a Total Scheduled Classes count and a Total Conducted Classes count.
+ * - Every attendance percentage and report must be calculated using Conducted Classes, not scheduled classes.
+ * - Validation: conducted count can never exceed scheduled count or go below 0.
  */
 export function computeStudentCourseAnalytics(params: {
   studentId: string;
@@ -105,8 +109,13 @@ export function computeStudentCourseAnalytics(params: {
     settings = DEFAULT_SYSTEM_SETTINGS,
   } = params;
 
-  const totalScheduled = Math.max(courseOffering.plannedClasses || 35, courseOffering.conductedClasses || 0);
-  const conducted = courseOffering.conductedClasses || records.length || 0;
+  // Strict scheduled vs conducted validation
+  const totalScheduled = Math.max(0, courseOffering.plannedClasses || 35);
+  // Conducted classes directly from courseOffering (capped at totalScheduled and >= 0)
+  const conducted = Math.min(
+    totalScheduled,
+    Math.max(0, typeof courseOffering.conductedClasses === 'number' ? courseOffering.conductedClasses : records.length)
+  );
   const remaining = Math.max(0, totalScheduled - conducted);
 
   // Deduplicate records by sessionId so multiple check-in logs for the same session never inflate counts
@@ -114,6 +123,7 @@ export function computeStudentCourseAnalytics(params: {
   for (const r of records) {
     const key = r.sessionId ? `${r.sessionId}_${r.studentId}` : r.id;
     const existing = uniqueRecordsMap.get(key);
+    // Keep most favorable status if duplicates exist
     if (!existing || (existing.status === 'ABSENT' && r.status !== 'ABSENT')) {
       uniqueRecordsMap.set(key, r);
     }
@@ -122,22 +132,25 @@ export function computeStudentCourseAnalytics(params: {
 
   let presentCount = 0;
   let absentCount = 0;
+  let excusedCount = 0;
 
   for (const r of cleanRecords) {
     if (r.status === 'PRESENT') presentCount++;
+    else if (r.status === 'EXCUSED') excusedCount++;
     else if (r.status === 'ABSENT') absentCount++;
   }
 
   const { lateCount, consecutiveLateCount, penaltyCount } = calculateLatePenalties(cleanRecords);
 
-  // Effective Attendance: Present + Late minus penalties
+  // Effective Attendance: Present + Late + Excused minus late penalties
   // If penalty enabled: each 3-late penalty deducts 1 class from effective attendance
   const effectivePresentCount = Math.max(
     0,
-    presentCount + lateCount - (settings.threeLatePenaltyEnabled ? penaltyCount : 0)
+    presentCount + lateCount + excusedCount - (settings.threeLatePenaltyEnabled ? penaltyCount : 0)
   );
 
-  // Current Attendance Percentage calculation (held so far)
+  // Current Attendance Percentage calculation:
+  // Formula: attendance % = classes attended / conducted classes × 100
   const attendancePercentage =
     conducted > 0
       ? Number(((effectivePresentCount / conducted) * 100).toFixed(2))

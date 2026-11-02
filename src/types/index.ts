@@ -9,9 +9,11 @@ export type CourseType = 'THEORY' | 'LAB';
 
 export type SessionStatus = 'SCHEDULED' | 'ACTIVE' | 'CLOSED' | 'CANCELLED';
 
-export type AttendanceMethod = 'QR' | 'FACE';
+export type AttendanceMethod = 'QR' | 'FACE' | 'MANUAL_ADMIN' | 'MANUAL_TEACHER' | 'RFID' | 'FINGERPRINT' | 'APP';
 
-export type AttendanceStatus = 'PRESENT' | 'LATE' | 'ABSENT';
+export type AttendanceSource = 'manual' | 'rfid' | 'fingerprint' | 'app' | 'qr' | 'face';
+
+export type AttendanceStatus = 'PRESENT' | 'LATE' | 'ABSENT' | 'EXCUSED';
 
 export type RiskLevel = 'SAFE' | 'WARNING' | 'HIGH_RISK' | 'CRITICAL';
 
@@ -113,6 +115,8 @@ export interface Student {
   section: string;
   status: 'ACTIVE' | 'INACTIVE' | 'DROPOUT' | 'GRADUATED';
   hasFaceProfile: boolean;
+  rfidCardUid?: string; // Hardware RFID Card UID (e.g. "E200001928" or "A4:8B:19:2C")
+  fingerprintTemplateId?: string; // Fingerprint template hash or enrollment ID (Privacy: never raw biometric image)
   avatarUrl?: string;
   authUid?: string;
 }
@@ -160,10 +164,16 @@ export interface AttendanceRecord {
   courseOfferingId: string;
   studentId: string;
   timestamp: string;
-  method: AttendanceMethod | 'MANUAL_ADMIN';
+  method: AttendanceMethod;
+  source?: AttendanceSource; // 'manual' | 'rfid' | 'fingerprint' | 'app' | 'qr' | 'face'
   status: AttendanceStatus;
   minutesLate: number;
   notes?: string;
+  isManuallyEdited?: boolean;
+  editedBy?: string;
+  editedAt?: string;
+  editReason?: string;
+  originalStatus?: AttendanceStatus;
 }
 
 export interface AttendanceCorrectionAudit {
@@ -175,7 +185,46 @@ export interface AttendanceCorrectionAudit {
   courseCode: string;
   originalStatus: AttendanceStatus;
   newStatus: AttendanceStatus;
-  changedBy: string; // Admin user
+  changedBy: string; // Teacher or Admin user email/ID
+  reason: string;
+  timestamp: string;
+}
+
+export interface HardwareDevice {
+  id: string;
+  deviceId: string; // e.g. "DEV-R304-RFID-01"
+  name: string; // e.g. "Room 304 RFID Reader"
+  room: string; // "Room 304"
+  building: string; // "Academic Complex 2"
+  deviceType: 'RFID' | 'FINGERPRINT' | 'DUAL';
+  apiKey: string; // Secret device authorization token
+  status: 'ACTIVE' | 'INACTIVE';
+  lastHeartbeat?: string;
+  registeredAt: string;
+}
+
+export interface HardwareScanLog {
+  id: string;
+  deviceId: string;
+  credentialId: string; // Card UID or template ID (no raw biometrics)
+  credentialType: 'RFID' | 'FINGERPRINT';
+  studentId?: string;
+  studentName?: string;
+  courseOfferingId?: string;
+  sessionId?: string;
+  status: 'SUCCESS' | 'DUPLICATE' | 'UNKNOWN_CREDENTIAL' | 'OUT_OF_WINDOW' | 'NOT_ENROLLED' | 'UNAUTHORIZED';
+  reason?: string;
+  timestamp: string;
+}
+
+export interface ClassCountAuditLog {
+  id: string;
+  courseOfferingId: string;
+  courseCode: string;
+  changedBy: string;
+  oldConducted: number;
+  newConducted: number;
+  scheduledTotal: number;
   reason: string;
   timestamp: string;
 }

@@ -8,16 +8,20 @@
 import {
   AcademicSession,
   AttendanceCorrectionAudit,
+  AttendanceMethod,
   AttendanceRecord,
   AttendanceSession,
   AttendanceStatus,
   Batch,
+  ClassCountAuditLog,
   Course,
   CourseOffering,
   Department,
   EmailLog,
   FaceProfile,
   FaceVerificationLog,
+  HardwareDevice,
+  HardwareScanLog,
   QRVerificationLog,
   RoutineEntry,
   Student,
@@ -67,6 +71,9 @@ export interface SystemDatabaseState {
   attendanceSessions: AttendanceSession[];
   attendanceRecords: AttendanceRecord[];
   attendanceCorrections: AttendanceCorrectionAudit[];
+  hardwareDevices: HardwareDevice[];
+  hardwareScanLogs: HardwareScanLog[];
+  classCountAudits: ClassCountAuditLog[];
   faceLogs: FaceVerificationLog[];
   qrLogs: QRVerificationLog[];
   emailLogs: EmailLog[];
@@ -222,6 +229,8 @@ const INITIAL_STATE: SystemDatabaseState = {
       section: 'A',
       status: 'ACTIVE',
       hasFaceProfile: true,
+      rfidCardUid: 'E200001928',
+      fingerprintTemplateId: 'FP-TMPL-24026',
       avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=160&q=80',
     },
     {
@@ -237,6 +246,8 @@ const INITIAL_STATE: SystemDatabaseState = {
       section: 'A',
       status: 'ACTIVE',
       hasFaceProfile: true,
+      rfidCardUid: 'A4:8B:19:2C',
+      fingerprintTemplateId: 'FP-TMPL-26002',
       avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=160&q=80',
     },
     {
@@ -252,6 +263,8 @@ const INITIAL_STATE: SystemDatabaseState = {
       section: 'A',
       status: 'ACTIVE',
       hasFaceProfile: false,
+      rfidCardUid: 'F5:12:88:9A',
+      fingerprintTemplateId: 'FP-TMPL-26003',
       avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=160&q=80',
     },
     {
@@ -267,6 +280,8 @@ const INITIAL_STATE: SystemDatabaseState = {
       section: 'A',
       status: 'ACTIVE',
       hasFaceProfile: false,
+      rfidCardUid: 'C3:44:90:11',
+      fingerprintTemplateId: 'FP-TMPL-25010',
       avatarUrl: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=160&q=80',
     },
     {
@@ -282,6 +297,8 @@ const INITIAL_STATE: SystemDatabaseState = {
       section: 'A',
       status: 'ACTIVE',
       hasFaceProfile: false,
+      rfidCardUid: 'D7:66:33:4B',
+      fingerprintTemplateId: 'FP-TMPL-26001',
       avatarUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=160&q=80',
     },
   ],
