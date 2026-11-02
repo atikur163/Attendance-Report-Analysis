@@ -2728,16 +2728,7 @@ class DatabaseService {
       return false;
     });
 
-    // If not specifically enrolled in room session, check any active session in that room
-    if (!targetSession) {
-      targetSession = this.state.attendanceSessions.find(s => {
-        if (s.status !== 'ACTIVE') return false;
-        const routine = s.routineEntryId ? this.state.routines.find(r => r.id === s.routineEntryId) : undefined;
-        return Boolean(routine && routine.room.toLowerCase() === device.room.toLowerCase());
-      });
-    }
-
-    // Fallback: Check any active session the student is enrolled in
+    // Fallback 1: Check any active session the student is enrolled in
     if (!targetSession) {
       const studentEnrolledOfferings = new Set(
         this.state.studentEnrollments
@@ -2747,6 +2738,15 @@ class DatabaseService {
       targetSession = this.state.attendanceSessions.find(
         s => s.status === 'ACTIVE' && studentEnrolledOfferings.has(s.courseOfferingId)
       );
+    }
+
+    // Fallback 2: Check any active session running in that room
+    if (!targetSession) {
+      targetSession = this.state.attendanceSessions.find(s => {
+        if (s.status !== 'ACTIVE') return false;
+        const routine = s.routineEntryId ? this.state.routines.find(r => r.id === s.routineEntryId) : undefined;
+        return Boolean(routine && routine.room.toLowerCase() === device.room.toLowerCase());
+      });
     }
 
     // Fallback: Check scheduled timetable routine for today & room

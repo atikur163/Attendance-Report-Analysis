@@ -9,7 +9,7 @@ export type CourseType = 'THEORY' | 'LAB';
 
 export type SessionStatus = 'SCHEDULED' | 'ACTIVE' | 'CLOSED' | 'CANCELLED';
 
-export type AttendanceMethod = 'QR' | 'FACE' | 'MANUAL_ADMIN' | 'MANUAL_TEACHER' | 'RFID' | 'FINGERPRINT' | 'APP';
+export type AttendanceMethod = 'QR' | 'FACE' | 'MANUAL' | 'MANUAL_ADMIN' | 'MANUAL_TEACHER' | 'RFID' | 'FINGERPRINT' | 'APP';
 
 export type AttendanceSource = 'manual' | 'rfid' | 'fingerprint' | 'app' | 'qr' | 'face';
 
