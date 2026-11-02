@@ -4,6 +4,7 @@ import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { db } from './src/services/db';
 
 dotenv.config();
 
@@ -439,6 +440,303 @@ Mawlana Bhashani Science and Technology University (MBSTU)`;
       error: friendly,
       message: friendly,
     });
+  }
+});
+
+// =========================================================================
+// 7. HARDWARE ATTENDANCE API (RFID & FINGERPRINT DEVICE SCAN ENDPOINT)
+// =========================================================================
+app.post('/api/hardware/scan', (req, res) => {
+  try {
+    const deviceId = req.body.device_id || req.body.deviceId;
+    const credentialId = req.body.credential_id || req.body.credentialId;
+    const credentialType = req.body.credential_type || req.body.credentialType;
+    const timestamp = req.body.timestamp || new Date().toISOString();
+
+    // Authenticate device with API Key from header or body
+    const apiKeyHeader = req.headers['x-api-key'] || req.headers['authorization'];
+    const apiKey = typeof apiKeyHeader === 'string'
+      ? apiKeyHeader.replace(/^Bearer\s+/i, '').trim()
+      : req.body.api_key || req.body.apiKey;
+
+    if (!deviceId || !credentialId) {
+      return res.status(400).json({
+        success: false,
+        status: 'BAD_REQUEST',
+        error: 'device_id and credential_id are mandatory parameters.',
+      });
+    }
+
+    const result = db.processHardwareScan({
+      deviceId,
+      credentialId,
+      credentialType,
+      timestamp,
+      apiKey,
+    });
+
+    let httpStatus = 200;
+    if (result.status === 'UNAUTHORIZED') httpStatus = 401;
+    else if (result.status === 'UNKNOWN_CREDENTIAL') httpStatus = 404;
+    else if (result.status === 'OUT_OF_WINDOW' || result.status === 'NOT_ENROLLED') httpStatus = 400;
+    else if (result.status === 'DUPLICATE') httpStatus = 409;
+
+    return res.status(httpStatus).json(result);
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      status: 'INTERNAL_ERROR',
+      error: error.message || 'Internal hardware scan error',
+    });
+  }
+});
+
+// List Registered Hardware Devices
+app.get('/api/hardware/devices', (req, res) => {
+  res.json({ success: true, devices: db.getHardwareDevices() });
+});
+
+// Register New Hardware Device
+app.post('/api/hardware/devices', (req, res) => {
+  try {
+    const { deviceId, name, room, building, deviceType, apiKey } = req.body;
+    if (!deviceId || !name || !room || !deviceType || !apiKey) {
+      return res.status(400).json({ success: false, error: 'Missing required device registration fields' });
+    }
+    const device = db.registerHardwareDevice({
+      deviceId,
+      name,
+      room,
+      building: building || 'Academic Complex',
+      deviceType,
+      apiKey,
+      status: 'ACTIVE',
+    });
+    return res.status(201).json({ success: true, device });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get Hardware Scan Logs
+app.get('/api/hardware/logs', (req, res) => {
+  res.json({ success: true, logs: db.getHardwareScanLogs() });
+});
+
+// =========================================================================
+// 8. MANUAL ATTENDANCE CORRECTION API (TEACHER & ADMIN)
+// =========================================================================
+app.post('/api/attendance/correct', (req, res) => {
+  try {
+    const {
+      attendanceRecordId,
+      sessionId,
+      studentId,
+      courseOfferingId,
+      newStatus,
+      changedBy,
+      reason,
+      userRole,
+      teacherId,
+    } = req.body;
+
+    if (!newStatus || !changedBy) {
+      return res.status(400).json({ success: false, error: 'newStatus and changedBy are required.' });
+    }
+
+    const result = db.correctAttendance({
+      attendanceRecordId,
+      sessionId,
+      studentId,
+      courseOfferingId,
+      newStatus,
+      changedBy,
+      reason,
+      userRole,
+      teacherId,
+    });
+
+    const statusCode = result.success ? 200 : (result.message.includes('Unauthorized') ? 403 : 400);
+    return res.status(statusCode).json(result);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Bulk Attendance Correction API
+app.post('/api/attendance/bulk-correct', (req, res) => {
+  try {
+    const {
+      courseOfferingId,
+      sessionId,
+      updates,
+      changedBy,
+      reason,
+      userRole,
+      teacherId,
+    } = req.body;
+
+    if (!courseOfferingId || !updates || !Array.isArray(updates) || !changedBy) {
+      return res.status(400).json({ success: false, error: 'courseOfferingId, updates array, and changedBy are required.' });
+    }
+
+    const result = db.bulkCorrectAttendance({
+      courseOfferingId,
+      sessionId,
+      updates,
+      changedBy,
+      reason,
+      userRole,
+      teacherId,
+    });
+
+    const statusCode = result.success ? 200 : (result.message.includes('Unauthorized') ? 403 : 400);
+    return res.status(statusCode).json(result);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =========================================================================
+// 9. TEACHER-MANAGED CLASS COUNT API
+// =========================================================================
+app.post('/api/classes/adjust-count', (req, res) => {
+  try {
+    const { courseOfferingId, newConductedCount, changedBy, reason, userRole, teacherId } = req.body;
+
+    if (!courseOfferingId || newConductedCount === undefined || !changedBy || !reason) {
+      return res.status(400).json({
+        success: false,
+        error: 'courseOfferingId, newConductedCount, changedBy, and reason are mandatory.',
+      });
+    }
+
+    const result = db.adjustConductedClasses({
+      courseOfferingId,
+      newConductedCount,
+      changedBy,
+      reason,
+      userRole,
+      teacherId,
+    });
+
+    const statusCode = result.success ? 200 : (result.message.includes('Unauthorized') ? 403 : 400);
+    return res.status(statusCode).json(result);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/classes/cancel-session', (req, res) => {
+  try {
+    const { sessionId, changedBy, reason, userRole, teacherId } = req.body;
+
+    if (!sessionId || !changedBy || !reason) {
+      return res.status(400).json({ success: false, error: 'sessionId, changedBy, and reason are mandatory.' });
+    }
+
+    const result = db.markSessionCancelled({
+      sessionId,
+      changedBy,
+      reason,
+      userRole,
+      teacherId,
+    });
+
+    const statusCode = result.success ? 200 : (result.message.includes('Unauthorized') ? 403 : 400);
+    return res.status(statusCode).json(result);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =========================================================================
+// 10. STUDENT SELF-ENROLLMENT & ENROLLMENT WINDOWS API
+// =========================================================================
+app.get('/api/enrollment/windows', (req, res) => {
+  res.json({
+    success: true,
+    windows: db.getEnrollmentWindows(),
+    activeWindow: db.getActiveEnrollmentWindow(),
+    windowStatus: db.isEnrollmentWindowOpen(),
+  });
+});
+
+app.post('/api/enrollment/windows', (req, res) => {
+  try {
+    const { id, academicSessionId, termName, startDate, endDate, isOpen, allowRetake, maxCreditsPerSemester, requireRetakeApproval } = req.body;
+    if (id) {
+      const updated = db.updateEnrollmentWindow(id, {
+        academicSessionId,
+        termName,
+        startDate,
+        endDate,
+        isOpen,
+        allowRetake,
+        maxCreditsPerSemester,
+        requireRetakeApproval,
+      });
+      return res.json({ success: true, window: updated });
+    } else {
+      if (!academicSessionId || !termName || !startDate || !endDate) {
+        return res.status(400).json({ success: false, error: 'academicSessionId, termName, startDate, and endDate are required.' });
+      }
+      const created = db.createEnrollmentWindow({
+        academicSessionId,
+        termName,
+        startDate,
+        endDate,
+        isOpen: isOpen !== undefined ? isOpen : true,
+        allowRetake: allowRetake !== undefined ? allowRetake : true,
+        maxCreditsPerSemester: maxCreditsPerSemester || 25,
+        requireRetakeApproval: Boolean(requireRetakeApproval),
+      });
+      return res.status(201).json({ success: true, window: created });
+    }
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/enrollment/self-enroll', (req, res) => {
+  try {
+    const { studentId, courseOfferingId, isRetake } = req.body;
+    if (!studentId || !courseOfferingId) {
+      return res.status(400).json({ success: false, error: 'studentId and courseOfferingId are required.' });
+    }
+    const result = db.enrollStudentSelf({ studentId, courseOfferingId, isRetake });
+    const statusCode = result.success ? 200 : 400;
+    return res.status(statusCode).json(result);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/enrollment/self-drop', (req, res) => {
+  try {
+    const { studentId, courseOfferingId, reason } = req.body;
+    if (!studentId || !courseOfferingId) {
+      return res.status(400).json({ success: false, error: 'studentId and courseOfferingId are required.' });
+    }
+    const result = db.dropStudentCourse({ studentId, courseOfferingId, reason });
+    const statusCode = result.success ? 200 : 400;
+    return res.status(statusCode).json(result);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/enrollment/admin-override', (req, res) => {
+  try {
+    const { studentId, courseOfferingId, action, adminName, reason, isRetake } = req.body;
+    if (!studentId || !courseOfferingId || !action || !adminName || !reason) {
+      return res.status(400).json({ success: false, error: 'Missing required override parameters.' });
+    }
+    const result = db.adminOverrideEnrollment({ studentId, courseOfferingId, action, adminName, reason, isRetake });
+    const statusCode = result.success ? 200 : 400;
+    return res.status(statusCode).json(result);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 

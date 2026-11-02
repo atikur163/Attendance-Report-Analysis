@@ -11,6 +11,7 @@ import {
   AttendanceMethod,
   AttendanceRecord,
   AttendanceSession,
+  AttendanceSource,
   AttendanceStatus,
   Batch,
   ClassCountAuditLog,
@@ -18,6 +19,7 @@ import {
   CourseOffering,
   Department,
   EmailLog,
+  EnrollmentWindow,
   FaceProfile,
   FaceVerificationLog,
   HardwareDevice,
@@ -66,6 +68,7 @@ export interface SystemDatabaseState {
   teacherAssignments: TeacherAssignment[];
   students: Student[];
   studentEnrollments: StudentEnrollment[];
+  enrollmentWindows: EnrollmentWindow[];
   faceProfiles: FaceProfile[];
   routines: RoutineEntry[];
   attendanceSessions: AttendanceSession[];
@@ -509,6 +512,56 @@ const INITIAL_STATE: SystemDatabaseState = {
     })),
   ],
   attendanceCorrections: [],
+  hardwareDevices: [
+    {
+      id: 'dev-r304',
+      deviceId: 'DEV-R304-RFID',
+      name: 'Room 304 IoT RFID Gateway',
+      room: 'Room 304',
+      building: 'Academic Complex 2',
+      deviceType: 'RFID',
+      apiKey: 'mbstu-r304-key-2026',
+      status: 'ACTIVE',
+      registeredAt: '2026-09-01T08:00:00Z',
+    },
+    {
+      id: 'dev-l402',
+      deviceId: 'DEV-L402-FP',
+      name: 'Lab 402 Biometric Fingerprint Terminal',
+      room: 'Lab 402',
+      building: 'Academic Complex 2',
+      deviceType: 'FINGERPRINT',
+      apiKey: 'mbstu-l402-key-2026',
+      status: 'ACTIVE',
+      registeredAt: '2026-09-01T08:00:00Z',
+    },
+    {
+      id: 'dev-r306',
+      deviceId: 'DEV-R306-DUAL',
+      name: 'Room 306 Dual RFID & Fingerprint Unit',
+      room: 'Room 306',
+      building: 'Academic Complex 2',
+      deviceType: 'DUAL',
+      apiKey: 'mbstu-r306-key-2026',
+      status: 'ACTIVE',
+      registeredAt: '2026-09-01T08:00:00Z',
+    },
+  ],
+  hardwareScanLogs: [],
+  classCountAudits: [],
+  enrollmentWindows: [
+    {
+      id: 'win-2025-2026-s1',
+      academicSessionId: 'sess-2025-2026',
+      termName: 'Academic Year 2025-2026 (Semester 1)',
+      startDate: '2026-09-01',
+      endDate: '2026-11-30',
+      isOpen: true,
+      allowRetake: true,
+      maxCreditsPerSemester: 25.0,
+      requireRetakeApproval: false,
+    },
+  ],
   faceLogs: [],
   qrLogs: [],
   emailLogs: [],
@@ -542,7 +595,7 @@ class DatabaseService {
 
   private loadLocalBackup(): SystemDatabaseState {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
       if (saved) {
         const parsed = JSON.parse(saved);
 
@@ -565,8 +618,12 @@ class DatabaseService {
           courseOfferings: mergeById(INITIAL_STATE.courseOfferings, parsed.courseOfferings),
           teacherAssignments: mergeById(INITIAL_STATE.teacherAssignments, parsed.teacherAssignments),
           studentEnrollments: mergeById(INITIAL_STATE.studentEnrollments, parsed.studentEnrollments),
+          enrollmentWindows: mergeById(INITIAL_STATE.enrollmentWindows, parsed.enrollmentWindows),
           attendanceRecords: mergeById(INITIAL_STATE.attendanceRecords, parsed.attendanceRecords),
           routines: mergeById(INITIAL_STATE.routines, parsed.routines),
+          hardwareDevices: mergeById(INITIAL_STATE.hardwareDevices, parsed.hardwareDevices),
+          hardwareScanLogs: Array.isArray(parsed.hardwareScanLogs) ? parsed.hardwareScanLogs : [],
+          classCountAudits: Array.isArray(parsed.classCountAudits) ? parsed.classCountAudits : [],
           settings: { ...DEFAULT_SYSTEM_SETTINGS, ...(parsed.settings || {}) },
         };
       }
@@ -631,7 +688,9 @@ class DatabaseService {
 
   public saveLocalBackup(): void {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
+      }
     } catch {
       // Ignore storage errors
     }
@@ -1388,6 +1447,382 @@ class DatabaseService {
     });
   }
 
+  // ==================== ENROLLMENT WINDOWS & STUDENT SELF-ENROLLMENT ====================
+  public getEnrollmentWindows(): EnrollmentWindow[] {
+    return this.state.enrollmentWindows || [];
+  }
+
+  public getActiveEnrollmentWindow(): EnrollmentWindow | undefined {
+    const today = new Date().toISOString().split('T')[0];
+    return (
+      (this.state.enrollmentWindows || []).find(w => {
+        if (w.isOpen === false) return false;
+        return today >= w.startDate && today <= w.endDate;
+      }) || this.state.enrollmentWindows?.[0]
+    );
+  }
+
+  public isEnrollmentWindowOpen(window?: EnrollmentWindow): { isOpen: boolean; reason?: string } {
+    const target = window || this.getActiveEnrollmentWindow();
+    if (!target) {
+      return { isOpen: false, reason: 'No academic enrollment window has been configured by the administrator.' };
+    }
+    if (target.isOpen === false) {
+      return { isOpen: false, reason: `Enrollment window for ${target.termName} has been closed by the registrar.` };
+    }
+    const today = new Date().toISOString().split('T')[0];
+    if (today < target.startDate) {
+      return { isOpen: false, reason: `Enrollment window for ${target.termName} opens on ${target.startDate}.` };
+    }
+    if (today > target.endDate) {
+      return { isOpen: false, reason: `Enrollment window for ${target.termName} closed on ${target.endDate}. Changes are locked.` };
+    }
+    return { isOpen: true };
+  }
+
+  public createEnrollmentWindow(windowData: Omit<EnrollmentWindow, 'id'>): EnrollmentWindow {
+    const newWindow: EnrollmentWindow = {
+      ...windowData,
+      id: 'win-' + Date.now(),
+    };
+    if (!this.state.enrollmentWindows) this.state.enrollmentWindows = [];
+    this.state.enrollmentWindows.unshift(newWindow);
+    this.saveLocalBackup();
+    this.safeSetDoc(doc(firestoreDb, 'enrollment_windows', newWindow.id), newWindow).catch(err => {
+      handleFirestoreError(err, OperationType.CREATE, `enrollment_windows/${newWindow.id}`);
+    });
+    return newWindow;
+  }
+
+  public updateEnrollmentWindow(id: string, updates: Partial<EnrollmentWindow>): EnrollmentWindow | null {
+    if (!this.state.enrollmentWindows) return null;
+    const idx = this.state.enrollmentWindows.findIndex(w => w.id === id);
+    if (idx === -1) return null;
+    this.state.enrollmentWindows[idx] = { ...this.state.enrollmentWindows[idx], ...updates };
+    const updated = this.state.enrollmentWindows[idx];
+    this.saveLocalBackup();
+    this.safeSetDoc(doc(firestoreDb, 'enrollment_windows', updated.id), updated).catch(err => {
+      handleFirestoreError(err, OperationType.UPDATE, `enrollment_windows/${updated.id}`);
+    });
+    return updated;
+  }
+
+  public enrollStudentSelf(params: {
+    studentId: string;
+    courseOfferingId: string;
+    isRetake?: boolean;
+  }): { success: boolean; message: string; enrollment?: StudentEnrollment } {
+    const student = this.state.students.find(s => s.id === params.studentId || s.studentId === params.studentId);
+    if (!student) return { success: false, message: 'Student account not found.' };
+
+    if (student.status !== 'ACTIVE') {
+      return { success: false, message: `Student status is ${student.status}. Only active students may enroll in courses.` };
+    }
+
+    const window = this.getActiveEnrollmentWindow();
+    const windowStatus = this.isEnrollmentWindowOpen(window);
+    if (!windowStatus.isOpen) {
+      return { success: false, message: windowStatus.reason || 'Enrollment window is closed. Changes are locked.' };
+    }
+
+    const offering = this.state.courseOfferings.find(co => co.id === params.courseOfferingId);
+    if (!offering) return { success: false, message: 'Course offering not found.' };
+
+    if (offering.status !== 'ACTIVE') {
+      return { success: false, message: 'This course offering is currently inactive and not accepting enrollments.' };
+    }
+
+    const course = this.state.courses.find(c => c.id === offering.courseId);
+    if (!course) return { success: false, message: 'Course definition not found.' };
+
+    // 1. Department / Program Isolation
+    const offeringDept = offering.departmentId || course.departmentId;
+    if (offeringDept && student.departmentId !== offeringDept) {
+      return {
+        success: false,
+        message: 'Department Mismatch: Students can only enroll in courses belonging to their own academic program.',
+      };
+    }
+
+    // 2. Year & Semester Match (unless Retake)
+    const isExactCohort = offering.year === student.year && offering.semester === student.semester;
+    const isEarlierSemester =
+      offering.year < student.year ||
+      (offering.year === student.year && offering.semester < student.semester);
+
+    if (!isExactCohort) {
+      if (!params.isRetake) {
+        return {
+          success: false,
+          message: `Level Mismatch: This course is scheduled for Year ${offering.year} Sem ${offering.semester}. You are in Year ${student.year} Sem ${student.semester}. If you are retaking this course, please select the Retake option.`,
+        };
+      }
+      if (!isEarlierSemester) {
+        return {
+          success: false,
+          message: 'Retake courses can only be selected from earlier academic semesters.',
+        };
+      }
+      if (window && !window.allowRetake) {
+        return { success: false, message: 'Retake course enrollment is disabled for this academic term.' };
+      }
+    }
+
+    // 3. Duplicate check in same course offering
+    const existing = this.state.studentEnrollments.find(
+      e => e.studentId === student.id && e.courseOfferingId === offering.id
+    );
+    if (existing && existing.status === 'ENROLLED') {
+      return { success: false, message: 'You are already actively enrolled in this course.' };
+    }
+
+    // 4. Seat Capacity Check
+    if (typeof offering.capacity === 'number' && offering.capacity > 0) {
+      const activeEnrollmentsCount = this.state.studentEnrollments.filter(
+        e => e.courseOfferingId === offering.id && e.status === 'ENROLLED'
+      ).length;
+      if (activeEnrollmentsCount >= offering.capacity) {
+        return {
+          success: false,
+          message: `Course offering is at full capacity (${activeEnrollmentsCount}/${offering.capacity} seats taken).`,
+        };
+      }
+    }
+
+    // 5. Credit Limit Check
+    const maxCredits = window?.maxCreditsPerSemester || 25.0;
+    const currentEnrolledOfferings = this.state.studentEnrollments
+      .filter(e => e.studentId === student.id && e.status === 'ENROLLED')
+      .map(e => this.state.courseOfferings.find(co => co.id === e.courseOfferingId))
+      .filter((co): co is CourseOffering => Boolean(co));
+
+    const currentTotalCredits = currentEnrolledOfferings.reduce((sum, co) => {
+      const cr = this.state.courses.find(c => c.id === co.courseId);
+      return sum + (cr?.credit || 0);
+    }, 0);
+
+    if (currentTotalCredits + (course.credit || 0) > maxCredits) {
+      return {
+        success: false,
+        message: `Credit Limit Exceeded: Adding this course (${course.credit} Cr) would exceed your term maximum of ${maxCredits} credits (Currently enrolled: ${currentTotalCredits} Cr).`,
+      };
+    }
+
+    // 6. Prerequisite Check (optional)
+    if (course.prerequisiteCourseIds && course.prerequisiteCourseIds.length > 0) {
+      const completedCourseIds = new Set(
+        this.state.studentEnrollments
+          .filter(e => e.studentId === student.id)
+          .map(e => this.state.courseOfferings.find(co => co.id === e.courseOfferingId)?.courseId)
+          .filter(Boolean)
+      );
+      const missingPrereqs = course.prerequisiteCourseIds.filter(pid => !completedCourseIds.has(pid));
+      if (missingPrereqs.length > 0) {
+        const missingCodes = missingPrereqs
+          .map(pid => this.state.courses.find(c => c.id === pid)?.code || pid)
+          .join(', ');
+        return {
+          success: false,
+          message: `Prerequisite unsatisfied: You must complete ${missingCodes} before enrolling in this course.`,
+        };
+      }
+    }
+
+    // 7. Create or Re-activate Enrollment
+    let enrollment: StudentEnrollment;
+    const nowIso = new Date().toISOString();
+
+    if (existing) {
+      existing.status = 'ENROLLED';
+      existing.enrolledAt = nowIso;
+      existing.droppedAt = undefined;
+      existing.dropReason = undefined;
+      existing.enrollmentType = params.isRetake ? 'RETAKE' : 'REGULAR';
+      existing.retakeStatus = params.isRetake && window?.requireRetakeApproval ? 'PENDING' : 'APPROVED';
+      existing.enrolledBy = 'STUDENT';
+      enrollment = existing;
+    } else {
+      enrollment = {
+        id: 'enr-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+        studentId: student.id,
+        courseOfferingId: offering.id,
+        enrolledAt: nowIso,
+        status: 'ENROLLED',
+        enrollmentType: params.isRetake ? 'RETAKE' : 'REGULAR',
+        retakeStatus: params.isRetake && window?.requireRetakeApproval ? 'PENDING' : 'APPROVED',
+        enrolledBy: 'STUDENT',
+        term: window?.termName || 'Current Term',
+      };
+      this.state.studentEnrollments.push(enrollment);
+    }
+
+    this.logAudit(
+      student.id,
+      student.name,
+      'STUDENT_SELF_ENROLLED',
+      'COURSE_OFFERING',
+      offering.id,
+      `Student ${student.name} (${student.studentId}) enrolled in ${course.code} - ${course.name} (${enrollment.enrollmentType})`
+    );
+
+    this.saveLocalBackup();
+    this.notifyListeners();
+
+    this.safeSetDoc(doc(firestoreDb, 'student_enrollments', enrollment.id), enrollment).catch(err => {
+      handleFirestoreError(err, OperationType.WRITE, `student_enrollments/${enrollment.id}`);
+    });
+
+    return {
+      success: true,
+      message: `Successfully enrolled in ${course.code} - ${course.name}!`,
+      enrollment,
+    };
+  }
+
+  public dropStudentCourse(params: {
+    studentId: string;
+    courseOfferingId: string;
+    reason?: string;
+    isOverride?: boolean;
+    overrideBy?: string;
+  }): { success: boolean; message: string } {
+    const student = this.state.students.find(s => s.id === params.studentId || s.studentId === params.studentId);
+    if (!student) return { success: false, message: 'Student not found.' };
+
+    if (!params.isOverride) {
+      const window = this.getActiveEnrollmentWindow();
+      const windowStatus = this.isEnrollmentWindowOpen(window);
+      if (!windowStatus.isOpen) {
+        return {
+          success: false,
+          message: windowStatus.reason || 'Enrollment window is closed. Dropping courses requires administrative override.',
+        };
+      }
+    }
+
+    const enrollment = this.state.studentEnrollments.find(
+      e => e.studentId === student.id && e.courseOfferingId === params.courseOfferingId && e.status === 'ENROLLED'
+    );
+
+    if (!enrollment) {
+      return { success: false, message: 'Active enrollment not found for this course.' };
+    }
+
+    const offering = this.state.courseOfferings.find(co => co.id === params.courseOfferingId);
+    const course = offering ? this.state.courses.find(c => c.id === offering.courseId) : undefined;
+
+    enrollment.status = 'DROPPED';
+    enrollment.droppedAt = new Date().toISOString();
+    enrollment.dropReason = params.reason || (params.isOverride ? `Admin override by ${params.overrideBy || 'Admin'}` : 'Student self-drop');
+
+    this.logAudit(
+      params.overrideBy || student.id,
+      params.overrideBy || student.name,
+      'STUDENT_COURSE_DROPPED',
+      'COURSE_OFFERING',
+      params.courseOfferingId,
+      `Dropped course ${course?.code || params.courseOfferingId} for ${student.name}. Reason: ${enrollment.dropReason}`
+    );
+
+    this.saveLocalBackup();
+    this.notifyListeners();
+
+    this.safeSetDoc(doc(firestoreDb, 'student_enrollments', enrollment.id), enrollment).catch(err => {
+      handleFirestoreError(err, OperationType.UPDATE, `student_enrollments/${enrollment.id}`);
+    });
+
+    return {
+      success: true,
+      message: `Course ${course?.code || ''} dropped successfully. Past attendance history has been preserved.`,
+    };
+  }
+
+  public adminOverrideEnrollment(params: {
+    studentId: string;
+    courseOfferingId: string;
+    action: 'FORCE_ENROLL' | 'FORCE_DROP' | 'APPROVE_RETAKE' | 'REJECT_RETAKE';
+    adminName: string;
+    reason: string;
+    isRetake?: boolean;
+  }): { success: boolean; message: string } {
+    const student = this.state.students.find(s => s.id === params.studentId || s.studentId === params.studentId);
+    const offering = this.state.courseOfferings.find(co => co.id === params.courseOfferingId);
+    if (!student || !offering) return { success: false, message: 'Student or course offering not found.' };
+
+    const course = this.state.courses.find(c => c.id === offering.courseId);
+    const existing = this.state.studentEnrollments.find(
+      e => e.studentId === student.id && e.courseOfferingId === offering.id
+    );
+
+    if (params.action === 'FORCE_ENROLL') {
+      const nowIso = new Date().toISOString();
+      let enrollment: StudentEnrollment;
+      if (existing) {
+        existing.status = 'ENROLLED';
+        existing.enrolledAt = nowIso;
+        existing.enrolledBy = 'ADMIN';
+        existing.dropReason = undefined;
+        existing.droppedAt = undefined;
+        enrollment = existing;
+      } else {
+        enrollment = {
+          id: 'enr-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+          studentId: student.id,
+          courseOfferingId: offering.id,
+          enrolledAt: nowIso,
+          status: 'ENROLLED',
+          enrollmentType: params.isRetake ? 'RETAKE' : 'REGULAR',
+          retakeStatus: 'APPROVED',
+          enrolledBy: 'ADMIN',
+          term: 'Administrative Override',
+        };
+        this.state.studentEnrollments.push(enrollment);
+      }
+
+      this.logAudit(
+        params.adminName,
+        params.adminName,
+        'ADMIN_FORCE_ENROLL',
+        'COURSE_OFFERING',
+        offering.id,
+        `Admin override: Force enrolled ${student.name} in ${course?.code}. Reason: ${params.reason}`
+      );
+      this.saveLocalBackup();
+      this.notifyListeners();
+      this.safeSetDoc(doc(firestoreDb, 'student_enrollments', enrollment.id), enrollment).catch(console.error);
+
+      return { success: true, message: `Admin override: ${student.name} successfully force-enrolled in ${course?.code}.` };
+    } else if (params.action === 'FORCE_DROP') {
+      return this.dropStudentCourse({
+        studentId: student.id,
+        courseOfferingId: offering.id,
+        reason: params.reason,
+        isOverride: true,
+        overrideBy: params.adminName,
+      });
+    } else if (params.action === 'APPROVE_RETAKE') {
+      if (!existing) return { success: false, message: 'Enrollment record not found.' };
+      existing.retakeStatus = 'APPROVED';
+      existing.status = 'ENROLLED';
+      this.logAudit(params.adminName, params.adminName, 'ADMIN_APPROVE_RETAKE', 'COURSE_OFFERING', offering.id, `Approved retake for ${student.name}`);
+      this.saveLocalBackup();
+      this.notifyListeners();
+      this.safeSetDoc(doc(firestoreDb, 'student_enrollments', existing.id), existing).catch(console.error);
+      return { success: true, message: `Retake request approved for ${student.name}.` };
+    } else if (params.action === 'REJECT_RETAKE') {
+      if (!existing) return { success: false, message: 'Enrollment record not found.' };
+      existing.retakeStatus = 'REJECTED';
+      existing.status = 'DROPPED';
+      this.logAudit(params.adminName, params.adminName, 'ADMIN_REJECT_RETAKE', 'COURSE_OFFERING', offering.id, `Rejected retake for ${student.name}`);
+      this.saveLocalBackup();
+      this.notifyListeners();
+      this.safeSetDoc(doc(firestoreDb, 'student_enrollments', existing.id), existing).catch(console.error);
+      return { success: true, message: `Retake request rejected for ${student.name}.` };
+    }
+
+    return { success: false, message: 'Invalid action.' };
+  }
+
   // ==================== FACE PROFILES ====================
   public getFaceProfiles(): FaceProfile[] {
     return this.state.faceProfiles;
@@ -1762,53 +2197,689 @@ class DatabaseService {
     };
   }
 
+  // ==================== TEACHER AUTHORIZATION HELPER ====================
+  public isTeacherAuthorizedForOffering(
+    teacherIdOrEmail?: string,
+    courseOfferingId?: string,
+    userRole?: UserRole
+  ): boolean {
+    if (userRole === 'ADMIN') return true;
+    if (!teacherIdOrEmail || !courseOfferingId) return false;
+
+    const teacher = this.findTeacher(teacherIdOrEmail);
+    if (!teacher) return false;
+
+    // Check direct teacher assignments
+    const isDirect = this.state.teacherAssignments.some(
+      ta => (ta.teacherId === teacher.id || ta.teacherId === teacher.teacherId) && ta.courseOfferingId === courseOfferingId
+    );
+    if (isDirect) return true;
+
+    // Check routine schedules
+    const isRoutine = this.state.routines.some(
+      r => (r.teacherId === teacher.id || r.teacherId === teacher.teacherId) && r.courseOfferingId === courseOfferingId
+    );
+    if (isRoutine) return true;
+
+    // Check authorized course IDs
+    const offering = this.state.courseOfferings.find(o => o.id === courseOfferingId);
+    if (offering && teacher.authorizedCourseIds?.includes(offering.courseId)) {
+      return true;
+    }
+
+    return false;
+  }
+
   // ==================== MANUAL CORRECTION & AUDIT LOGS ====================
   public correctAttendance(params: {
-    attendanceRecordId: string;
+    attendanceRecordId?: string;
+    sessionId?: string;
+    studentId?: string;
+    courseOfferingId?: string;
     newStatus: AttendanceStatus;
     changedBy: string;
-    reason: string;
-  }): { success: boolean; message: string } {
-    const record = this.state.attendanceRecords.find(r => r.id === params.attendanceRecordId);
-    if (!record) return { success: false, message: 'Attendance record not found' };
+    reason?: string;
+    userRole?: UserRole;
+    teacherId?: string;
+  }): { success: boolean; message: string; record?: AttendanceRecord; audit?: AttendanceCorrectionAudit } {
+    // 1. Resolve record or session context
+    let record = params.attendanceRecordId
+      ? this.state.attendanceRecords.find(r => r.id === params.attendanceRecordId)
+      : undefined;
 
-    const student = this.state.students.find(s => s.id === record.studentId);
-    const offering = this.state.courseOfferings.find(co => co.id === record.courseOfferingId);
+    let offeringId = record?.courseOfferingId || params.courseOfferingId;
+    let sessionId = record?.sessionId || params.sessionId;
+    let studentId = record?.studentId || params.studentId;
+
+    if (!record && sessionId && studentId) {
+      record = this.state.attendanceRecords.find(
+        r => r.sessionId === sessionId && r.studentId === studentId
+      );
+    }
+
+    if (record) {
+      offeringId = record.courseOfferingId;
+      sessionId = record.sessionId;
+      studentId = record.studentId;
+    }
+
+    if (!offeringId && sessionId) {
+      const sess = this.state.attendanceSessions.find(s => s.id === sessionId);
+      if (sess) offeringId = sess.courseOfferingId;
+    }
+
+    if (!offeringId || !studentId) {
+      return { success: false, message: 'Invalid correction request: student or course offering not resolved.' };
+    }
+
+    // 2. Authorization check: Must be ADMIN or assigned teacher
+    const isAuthorized = this.isTeacherAuthorizedForOffering(
+      params.teacherId || params.changedBy,
+      offeringId,
+      params.userRole
+    );
+    if (!isAuthorized) {
+      return {
+        success: false,
+        message: 'Unauthorized: Only faculty members assigned to this course or administrators can correct attendance records.',
+      };
+    }
+
+    const student = this.state.students.find(s => s.id === studentId);
+    const offering = this.state.courseOfferings.find(co => co.id === offeringId);
     const course = offering ? this.state.courses.find(c => c.id === offering.courseId) : undefined;
+    const reasonText = params.reason?.trim() || 'Manual attendance correction';
+    const nowIso = new Date().toISOString();
 
-    const originalStatus = record.status;
-    record.status = params.newStatus;
-    record.notes = `Corrected by ${params.changedBy}: ${params.reason}`;
+    let originalStatus: AttendanceStatus = 'ABSENT';
 
+    if (record) {
+      originalStatus = record.status;
+      record.originalStatus = record.originalStatus || originalStatus;
+      record.status = params.newStatus;
+      record.isManuallyEdited = true;
+      record.editedBy = params.changedBy;
+      record.editedAt = nowIso;
+      record.editReason = reasonText;
+      record.notes = `Manual edit by ${params.changedBy}: ${reasonText}`;
+      if (!record.source) record.source = 'manual';
+    } else {
+      // Create record for un-recorded student
+      record = {
+        id: 'rec-' + Date.now() + '-' + Math.floor(Math.random() * 10000),
+        sessionId: sessionId || 'sess-manual-corr-' + Date.now(),
+        courseOfferingId: offeringId,
+        studentId,
+        timestamp: nowIso,
+        method: 'MANUAL_TEACHER',
+        source: 'manual',
+        status: params.newStatus,
+        minutesLate: params.newStatus === 'LATE' ? (this.state.settings.lateThresholdMinutes + 5) : 0,
+        isManuallyEdited: true,
+        editedBy: params.changedBy,
+        editedAt: nowIso,
+        editReason: reasonText,
+        originalStatus: 'ABSENT',
+        notes: `Created via manual correction by ${params.changedBy}: ${reasonText}`,
+      };
+      this.state.attendanceRecords.push(record);
+    }
+
+    // 3. Create Audit Trail
     const audit: AttendanceCorrectionAudit = {
-      id: 'corr-' + Date.now(),
+      id: 'corr-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
       attendanceId: record.id,
-      studentId: record.studentId,
-      studentName: student?.name || 'Unknown',
-      courseOfferingId: record.courseOfferingId,
+      studentId: studentId,
+      studentName: student?.name || 'Unknown Student',
+      courseOfferingId: offeringId,
       courseCode: course?.code || 'N/A',
       originalStatus,
       newStatus: params.newStatus,
       changedBy: params.changedBy,
-      reason: params.reason,
-      timestamp: new Date().toISOString(),
+      reason: reasonText,
+      timestamp: nowIso,
     };
 
     this.state.attendanceCorrections.unshift(audit);
+    this.logAudit(
+      params.changedBy,
+      params.changedBy,
+      'ATTENDANCE_CORRECTED',
+      'ATTENDANCE_RECORD',
+      record.id,
+      `Changed ${student?.name || studentId} status from ${originalStatus} to ${params.newStatus} in ${course?.code}. Reason: ${reasonText}`
+    );
+
     this.saveLocalBackup();
 
+    // Async sync to Firestore
     this.safeSetDoc(doc(firestoreDb, 'attendance_records', record.id), record).catch(err => {
-      handleFirestoreError(err, OperationType.UPDATE, `attendance_records/${record.id}`);
+      handleFirestoreError(err, OperationType.WRITE, `attendance_records/${record?.id}`);
     });
     this.safeSetDoc(doc(firestoreDb, 'attendance_corrections', audit.id), audit).catch(err => {
       handleFirestoreError(err, OperationType.CREATE, `attendance_corrections/${audit.id}`);
     });
 
-    return { success: true, message: 'Attendance successfully updated in Cloud Firestore' };
+    return {
+      success: true,
+      message: `Attendance for ${student?.name || 'student'} updated to ${params.newStatus}.`,
+      record,
+      audit,
+    };
+  }
+
+  public bulkCorrectAttendance(params: {
+    courseOfferingId: string;
+    sessionId?: string;
+    updates: Array<{
+      studentId: string;
+      attendanceRecordId?: string;
+      newStatus: AttendanceStatus;
+      reason?: string;
+    }>;
+    changedBy: string;
+    reason?: string;
+    userRole?: UserRole;
+    teacherId?: string;
+  }): { success: boolean; message: string; updatedCount: number; audits: AttendanceCorrectionAudit[] } {
+    const isAuthorized = this.isTeacherAuthorizedForOffering(
+      params.teacherId || params.changedBy,
+      params.courseOfferingId,
+      params.userRole
+    );
+    if (!isAuthorized) {
+      return {
+        success: false,
+        message: 'Unauthorized: Only faculty members assigned to this course or administrators can correct attendance records.',
+        updatedCount: 0,
+        audits: [],
+      };
+    }
+
+    const audits: AttendanceCorrectionAudit[] = [];
+    let updatedCount = 0;
+
+    for (const update of params.updates) {
+      const res = this.correctAttendance({
+        courseOfferingId: params.courseOfferingId,
+        sessionId: params.sessionId,
+        attendanceRecordId: update.attendanceRecordId,
+        studentId: update.studentId,
+        newStatus: update.newStatus,
+        changedBy: params.changedBy,
+        reason: update.reason || params.reason,
+        userRole: params.userRole,
+        teacherId: params.teacherId,
+      });
+
+      if (res.success && res.audit) {
+        audits.push(res.audit);
+        updatedCount++;
+      }
+    }
+
+    return {
+      success: true,
+      message: `Bulk correction applied to ${updatedCount} student record(s).`,
+      updatedCount,
+      audits,
+    };
   }
 
   public getAttendanceCorrections(): AttendanceCorrectionAudit[] {
     return this.state.attendanceCorrections;
+  }
+
+  // ==================== TEACHER-MANAGED CLASS COUNT ====================
+  public adjustConductedClasses(params: {
+    courseOfferingId: string;
+    newConductedCount: number;
+    changedBy: string;
+    reason: string;
+    userRole?: UserRole;
+    teacherId?: string;
+  }): { success: boolean; message: string; offering?: CourseOffering; audit?: ClassCountAuditLog } {
+    const isAuthorized = this.isTeacherAuthorizedForOffering(
+      params.teacherId || params.changedBy,
+      params.courseOfferingId,
+      params.userRole
+    );
+    if (!isAuthorized) {
+      return {
+        success: false,
+        message: 'Unauthorized: Only assigned faculty or university administrators can adjust class counts.',
+      };
+    }
+
+    const offering = this.state.courseOfferings.find(co => co.id === params.courseOfferingId);
+    if (!offering) {
+      return { success: false, message: 'Course offering not found' };
+    }
+
+    const scheduled = Math.max(0, offering.plannedClasses || 35);
+    const newCount = Number(params.newConductedCount);
+
+    if (isNaN(newCount)) {
+      return { success: false, message: 'Invalid class count provided' };
+    }
+    if (newCount < 0) {
+      return { success: false, message: 'Conducted classes count cannot be negative (minimum 0).' };
+    }
+    if (newCount > scheduled) {
+      return {
+        success: false,
+        message: `Conducted classes count (${newCount}) cannot exceed total scheduled classes (${scheduled}).`,
+      };
+    }
+
+    const reason = params.reason?.trim();
+    if (!reason) {
+      return { success: false, message: 'A mandatory reason is required to adjust conducted class count.' };
+    }
+
+    const oldCount = offering.conductedClasses || 0;
+    offering.conductedClasses = newCount;
+
+    const course = this.state.courses.find(c => c.id === offering.courseId);
+
+    const audit: ClassCountAuditLog = {
+      id: 'cca-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+      courseOfferingId: offering.id,
+      courseCode: course?.code || 'N/A',
+      changedBy: params.changedBy,
+      oldConducted: oldCount,
+      newConducted: newCount,
+      scheduledTotal: scheduled,
+      reason,
+      timestamp: new Date().toISOString(),
+    };
+
+    this.state.classCountAudits.unshift(audit);
+    this.logAudit(
+      params.changedBy,
+      params.changedBy,
+      'CLASS_COUNT_ADJUSTED',
+      'COURSE_OFFERING',
+      offering.id,
+      `Conducted classes for ${course?.code} adjusted from ${oldCount} to ${newCount} of ${scheduled} scheduled. Reason: ${reason}`
+    );
+
+    this.saveLocalBackup();
+
+    this.safeSetDoc(doc(firestoreDb, 'course_offerings', offering.id), offering).catch(err => {
+      handleFirestoreError(err, OperationType.UPDATE, `course_offerings/${offering.id}`);
+    });
+    this.safeSetDoc(doc(firestoreDb, 'class_count_audits', audit.id), audit).catch(err => {
+      handleFirestoreError(err, OperationType.CREATE, `class_count_audits/${audit.id}`);
+    });
+
+    return {
+      success: true,
+      message: `Conducted classes count successfully updated to ${newCount}/${scheduled}. Reports and attendance rates updated immediately.`,
+      offering,
+      audit,
+    };
+  }
+
+  public markSessionCancelled(params: {
+    sessionId: string;
+    changedBy: string;
+    reason: string;
+    userRole?: UserRole;
+    teacherId?: string;
+  }): { success: boolean; message: string; session?: AttendanceSession } {
+    const session = this.state.attendanceSessions.find(s => s.id === params.sessionId);
+    if (!session) return { success: false, message: 'Attendance session not found' };
+
+    const isAuthorized = this.isTeacherAuthorizedForOffering(
+      params.teacherId || params.changedBy,
+      session.courseOfferingId,
+      params.userRole
+    );
+    if (!isAuthorized) {
+      return { success: false, message: 'Unauthorized: Only assigned faculty or admin can cancel a session' };
+    }
+
+    session.status = 'CANCELLED';
+    session.notes = (session.notes ? session.notes + ' | ' : '') + `Cancelled by ${params.changedBy}: ${params.reason}`;
+
+    // Adjust conducted count for offering down by 1 if > 0
+    const offering = this.state.courseOfferings.find(co => co.id === session.courseOfferingId);
+    if (offering && offering.conductedClasses > 0) {
+      const oldCount = offering.conductedClasses;
+      offering.conductedClasses = Math.max(0, offering.conductedClasses - 1);
+      const course = this.state.courses.find(c => c.id === offering.courseId);
+
+      const audit: ClassCountAuditLog = {
+        id: 'cca-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+        courseOfferingId: offering.id,
+        courseCode: course?.code || 'N/A',
+        changedBy: params.changedBy,
+        oldConducted: oldCount,
+        newConducted: offering.conductedClasses,
+        scheduledTotal: offering.plannedClasses,
+        reason: `Session ${session.date} (${session.startTime}) cancelled: ${params.reason}`,
+        timestamp: new Date().toISOString(),
+      };
+      this.state.classCountAudits.unshift(audit);
+      this.safeSetDoc(doc(firestoreDb, 'course_offerings', offering.id), offering).catch(err => {
+        handleFirestoreError(err, OperationType.UPDATE, `course_offerings/${offering.id}`);
+      });
+      this.safeSetDoc(doc(firestoreDb, 'class_count_audits', audit.id), audit).catch(err => {
+        handleFirestoreError(err, OperationType.CREATE, `class_count_audits/${audit.id}`);
+      });
+    }
+
+    this.saveLocalBackup();
+    this.safeSetDoc(doc(firestoreDb, 'attendance_sessions', session.id), session).catch(err => {
+      handleFirestoreError(err, OperationType.UPDATE, `attendance_sessions/${session.id}`);
+    });
+
+    return {
+      success: true,
+      message: 'Session marked as CANCELLED / Not Conducted. Class count adjusted.',
+      session,
+    };
+  }
+
+  // ==================== HARDWARE (RFID & FINGERPRINT) ATTENDANCE ====================
+  public registerHardwareDevice(device: Omit<HardwareDevice, 'id' | 'registeredAt'>): HardwareDevice {
+    const newDev: HardwareDevice = {
+      ...device,
+      id: 'dev-' + (device.deviceId.toLowerCase().replace(/[^a-z0-9]/g, '-') || Date.now()),
+      registeredAt: new Date().toISOString(),
+    };
+    this.state.hardwareDevices.push(newDev);
+    this.saveLocalBackup();
+    this.safeSetDoc(doc(firestoreDb, 'hardware_devices', newDev.id), newDev).catch(err => {
+      handleFirestoreError(err, OperationType.CREATE, `hardware_devices/${newDev.id}`);
+    });
+    return newDev;
+  }
+
+  public updateHardwareDevice(id: string, updates: Partial<HardwareDevice>): HardwareDevice | null {
+    const idx = this.state.hardwareDevices.findIndex(d => d.id === id || d.deviceId === id);
+    if (idx === -1) return null;
+    this.state.hardwareDevices[idx] = { ...this.state.hardwareDevices[idx], ...updates };
+    const updated = this.state.hardwareDevices[idx];
+    this.saveLocalBackup();
+    this.safeSetDoc(doc(firestoreDb, 'hardware_devices', updated.id), updated).catch(err => {
+      handleFirestoreError(err, OperationType.UPDATE, `hardware_devices/${updated.id}`);
+    });
+    return updated;
+  }
+
+  public deleteHardwareDevice(id: string): boolean {
+    const initialLen = this.state.hardwareDevices.length;
+    this.state.hardwareDevices = this.state.hardwareDevices.filter(d => d.id !== id && d.deviceId !== id);
+    if (this.state.hardwareDevices.length === initialLen) return false;
+    this.saveLocalBackup();
+    return true;
+  }
+
+  public linkStudentBiometrics(params: {
+    studentId: string;
+    rfidCardUid?: string;
+    fingerprintTemplateId?: string;
+  }): { success: boolean; message: string; student?: Student } {
+    const student = this.state.students.find(s => s.id === params.studentId || s.studentId === params.studentId);
+    if (!student) return { success: false, message: 'Student not found' };
+
+    if (params.rfidCardUid !== undefined) {
+      student.rfidCardUid = params.rfidCardUid.trim() || undefined;
+    }
+    if (params.fingerprintTemplateId !== undefined) {
+      student.fingerprintTemplateId = params.fingerprintTemplateId.trim() || undefined;
+    }
+
+    this.saveLocalBackup();
+    this.safeSetDoc(doc(firestoreDb, 'students', student.id), student).catch(err => {
+      handleFirestoreError(err, OperationType.UPDATE, `students/${student.id}`);
+    });
+
+    return {
+      success: true,
+      message: `Hardware credentials linked for ${student.name} (${student.studentId})`,
+      student,
+    };
+  }
+
+  public processHardwareScan(params: {
+    deviceId: string;
+    credentialId: string;
+    credentialType?: 'RFID' | 'FINGERPRINT';
+    timestamp?: string;
+    apiKey?: string;
+  }): { success: boolean; status: HardwareScanLog['status']; message: string; record?: AttendanceRecord; scanLog: HardwareScanLog } {
+    const scanTime = params.timestamp || new Date().toISOString();
+    const credId = params.credentialId.trim();
+
+    // 1. Device lookup & authentication
+    const device = this.state.hardwareDevices.find(
+      d => d.deviceId.toLowerCase() === params.deviceId.toLowerCase() || d.id === params.deviceId
+    );
+
+    const credType: 'RFID' | 'FINGERPRINT' =
+      params.credentialType || (device?.deviceType === 'FINGERPRINT' ? 'FINGERPRINT' : 'RFID');
+
+    const createLog = (
+      status: HardwareScanLog['status'],
+      reason?: string,
+      extras?: { studentId?: string; studentName?: string; courseOfferingId?: string; sessionId?: string }
+    ): HardwareScanLog => {
+      const log: HardwareScanLog = {
+        id: 'hwl-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+        deviceId: params.deviceId,
+        credentialId: credId,
+        credentialType: credType,
+        status,
+        reason,
+        timestamp: scanTime,
+        ...extras,
+      };
+      this.state.hardwareScanLogs.unshift(log);
+      if (this.state.hardwareScanLogs.length > 500) {
+        this.state.hardwareScanLogs = this.state.hardwareScanLogs.slice(0, 500);
+      }
+      this.saveLocalBackup();
+      this.safeSetDoc(doc(firestoreDb, 'hardware_scan_logs', log.id), log).catch(err => {
+        handleFirestoreError(err, OperationType.CREATE, `hardware_scan_logs/${log.id}`);
+      });
+      return log;
+    };
+
+    if (!device || device.status !== 'ACTIVE') {
+      const log = createLog('UNAUTHORIZED', 'Hardware device is unknown, not registered, or deactivated');
+      return { success: false, status: 'UNAUTHORIZED', message: 'Hardware device not authorized', scanLog: log };
+    }
+
+    if (params.apiKey && device.apiKey && params.apiKey !== device.apiKey) {
+      const log = createLog('UNAUTHORIZED', 'Invalid device API key authentication failed');
+      return { success: false, status: 'UNAUTHORIZED', message: 'Invalid device API key', scanLog: log };
+    }
+
+    // Update heartbeat
+    device.lastHeartbeat = scanTime;
+
+    // 2. Identify student from RFID UID or Fingerprint Template ID
+    const student = this.state.students.find(s => {
+      if (credType === 'RFID') {
+        return s.rfidCardUid && s.rfidCardUid.toLowerCase() === credId.toLowerCase();
+      } else {
+        return s.fingerprintTemplateId && s.fingerprintTemplateId.toLowerCase() === credId.toLowerCase();
+      }
+    });
+
+    if (!student) {
+      const log = createLog('UNKNOWN_CREDENTIAL', `No student registered with ${credType} credential "${credId}"`);
+      return { success: false, status: 'UNKNOWN_CREDENTIAL', message: `Unknown ${credType} credential`, scanLog: log };
+    }
+
+    // 3. Find current running session or timetable routine for this classroom
+    let targetSession: AttendanceSession | undefined = this.state.attendanceSessions.find(s => {
+      if (s.status !== 'ACTIVE') return false;
+      const routine = s.routineEntryId ? this.state.routines.find(r => r.id === s.routineEntryId) : undefined;
+      if (routine && routine.room.toLowerCase() === device.room.toLowerCase()) {
+        const isStudentEnrolled = this.state.studentEnrollments.some(
+          e => e.courseOfferingId === s.courseOfferingId && e.studentId === student.id && e.status === 'ENROLLED'
+        );
+        return isStudentEnrolled;
+      }
+      return false;
+    });
+
+    // If not specifically enrolled in room session, check any active session in that room
+    if (!targetSession) {
+      targetSession = this.state.attendanceSessions.find(s => {
+        if (s.status !== 'ACTIVE') return false;
+        const routine = s.routineEntryId ? this.state.routines.find(r => r.id === s.routineEntryId) : undefined;
+        return Boolean(routine && routine.room.toLowerCase() === device.room.toLowerCase());
+      });
+    }
+
+    // Fallback: Check any active session the student is enrolled in
+    if (!targetSession) {
+      const studentEnrolledOfferings = new Set(
+        this.state.studentEnrollments
+          .filter(e => e.studentId === student.id && e.status === 'ENROLLED')
+          .map(e => e.courseOfferingId)
+      );
+      targetSession = this.state.attendanceSessions.find(
+        s => s.status === 'ACTIVE' && studentEnrolledOfferings.has(s.courseOfferingId)
+      );
+    }
+
+    // Fallback: Check scheduled timetable routine for today & room
+    if (!targetSession) {
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
+      const today = days[new Date(scanTime).getDay()];
+      const matchingRoutine = this.state.routines.find(
+        r => r.dayOfWeek === today && r.room.toLowerCase() === device.room.toLowerCase()
+      );
+
+      if (matchingRoutine) {
+        const courseOff = this.state.courseOfferings.find(co => co.id === matchingRoutine.courseOfferingId);
+        if (courseOff) {
+          targetSession = {
+            id: 'sess-auto-hw-' + Date.now(),
+            courseOfferingId: courseOff.id,
+            teacherId: matchingRoutine.teacherId,
+            routineEntryId: matchingRoutine.id,
+            date: new Date(scanTime).toISOString().split('T')[0],
+            startTime: matchingRoutine.startTime,
+            endTime: matchingRoutine.endTime,
+            attendanceMethod: credType,
+            status: 'ACTIVE',
+            currentToken: 'HW-' + Date.now(),
+            tokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+            allowSelfCheckIn: false,
+            notes: `Auto-created via classroom hardware scan (${device.name})`,
+            createdAt: scanTime,
+          };
+          this.state.attendanceSessions.unshift(targetSession);
+          courseOff.conductedClasses = (courseOff.conductedClasses || 0) + 1;
+          this.saveLocalBackup();
+        }
+      }
+    }
+
+    if (!targetSession) {
+      const log = createLog('OUT_OF_WINDOW', `No active class session or scheduled lecture in ${device.room}`, {
+        studentId: student.id,
+        studentName: student.name,
+      });
+      return { success: false, status: 'OUT_OF_WINDOW', message: `No active class in ${device.room}`, scanLog: log };
+    }
+
+    // 4. Validate Student Enrollment
+    const isEnrolled = this.state.studentEnrollments.some(
+      e => e.courseOfferingId === targetSession!.courseOfferingId && e.studentId === student.id && e.status === 'ENROLLED'
+    );
+    if (!isEnrolled) {
+      const log = createLog('NOT_ENROLLED', `Student ${student.name} is not enrolled in course offering ${targetSession.courseOfferingId}`, {
+        studentId: student.id,
+        studentName: student.name,
+        courseOfferingId: targetSession.courseOfferingId,
+        sessionId: targetSession.id,
+      });
+      return { success: false, status: 'NOT_ENROLLED', message: 'Student is not enrolled in this course', scanLog: log };
+    }
+
+    // 5. Duplicate Check
+    const existing = this.state.attendanceRecords.find(
+      r => r.sessionId === targetSession!.id && r.studentId === student.id
+    );
+    if (existing) {
+      const log = createLog('DUPLICATE', `Attendance already recorded for ${student.name} (${existing.status})`, {
+        studentId: student.id,
+        studentName: student.name,
+        courseOfferingId: targetSession.courseOfferingId,
+        sessionId: targetSession.id,
+      });
+      return {
+        success: false,
+        status: 'DUPLICATE',
+        message: `Attendance already marked (${existing.status}) at ${new Date(existing.timestamp).toLocaleTimeString()}`,
+        record: existing,
+        scanLog: log,
+      };
+    }
+
+    // 6. Record Attendance
+    let minutesLate = 0;
+    try {
+      const [timePart, modifier] = targetSession.startTime.split(' ');
+      let [hours, minutes] = timePart.split(':').map(Number);
+      if (modifier === 'PM' && hours < 12) hours += 12;
+      if (modifier === 'AM' && hours === 12) hours = 0;
+      const sessionStartDate = new Date(scanTime);
+      sessionStartDate.setHours(hours, minutes, 0, 0);
+      const diffMs = new Date(scanTime).getTime() - sessionStartDate.getTime();
+      minutesLate = Math.max(0, Math.round(diffMs / (60 * 1000)));
+    } catch {
+      minutesLate = 0;
+    }
+
+    const status: AttendanceStatus =
+      minutesLate < this.state.settings.lateThresholdMinutes ? 'PRESENT' : 'LATE';
+
+    const source: AttendanceSource = credType === 'FINGERPRINT' ? 'fingerprint' : 'rfid';
+    const method: AttendanceMethod = credType;
+
+    const record: AttendanceRecord = {
+      id: 'rec-hw-' + Date.now() + '-' + Math.floor(Math.random() * 10000),
+      sessionId: targetSession.id,
+      courseOfferingId: targetSession.courseOfferingId,
+      studentId: student.id,
+      timestamp: scanTime,
+      method,
+      source,
+      status,
+      minutesLate,
+      notes: `Scanned via ${device.name} [${device.room}]`,
+    };
+
+    this.state.attendanceRecords.push(record);
+    const log = createLog('SUCCESS', `Attendance successfully logged as ${status} via ${credType}`, {
+      studentId: student.id,
+      studentName: student.name,
+      courseOfferingId: targetSession.courseOfferingId,
+      sessionId: targetSession.id,
+    });
+
+    this.saveLocalBackup();
+
+    this.safeSetDoc(doc(firestoreDb, 'attendance_records', record.id), record).catch(err => {
+      handleFirestoreError(err, OperationType.CREATE, `attendance_records/${record.id}`);
+    });
+
+    return {
+      success: true,
+      status: 'SUCCESS',
+      message: `Attendance recorded as ${status} for ${student.name} (${student.studentId})`,
+      record,
+      scanLog: log,
+    };
   }
 
   public addFaceLog(log: Omit<FaceVerificationLog, 'id' | 'timestamp'>): void {
@@ -1900,6 +2971,18 @@ class DatabaseService {
 
   public getSettings(): SystemSettings {
     return this.state.settings;
+  }
+
+  public getHardwareDevices(): HardwareDevice[] {
+    return this.state.hardwareDevices || [];
+  }
+
+  public getHardwareScanLogs(): HardwareScanLog[] {
+    return this.state.hardwareScanLogs || [];
+  }
+
+  public getClassCountAudits(): ClassCountAuditLog[] {
+    return this.state.classCountAudits || [];
   }
 
   public updateSettings(newSettings: Partial<SystemSettings>): void {

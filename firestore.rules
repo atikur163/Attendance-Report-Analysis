@@ -158,20 +158,39 @@ service cloud.firestore {
         request.resource.data.studentId == currentStudentId() ||
         exists(/databases/$(database)/documents/attendance_sessions/$(request.resource.data.sessionId))
       );
-      // Updates and deletions are restricted to Admin (Official corrections and audit logs)
-      allow update, delete: if isAdmin();
+      // Updates allowed for Admins and Teachers (manual corrections)
+      allow update: if isSignedIn() && (isAdmin() || isTeacher());
+      allow delete: if isAdmin();
     }
 
     // 8. Attendance Corrections & Audit Logs
     match /attendance_corrections/{correctionId} {
       allow read: if isAdmin() || isTeacher();
-      allow write: if isAdmin();
+      allow create: if isSignedIn() && (isAdmin() || isTeacher());
+      allow update, delete: if isAdmin();
     }
 
     match /audit_logs/{auditId} {
       allow read: if isAdmin();
       allow create: if isSignedIn();
       allow update, delete: if false;
+    }
+
+    match /hardware_devices/{deviceId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || isTeacher();
+    }
+
+    match /hardware_scan_logs/{logId} {
+      allow read: if isAdmin() || isTeacher();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    match /class_count_audits/{auditId} {
+      allow read: if isAdmin() || isTeacher();
+      allow create: if isSignedIn() && (isAdmin() || isTeacher());
+      allow update, delete: if isAdmin();
     }
 
     match /email_logs/{emailId} {

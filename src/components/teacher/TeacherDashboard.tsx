@@ -16,6 +16,21 @@ import {
   ChevronRight,
   BookOpen,
   Send,
+  Cpu,
+  Radio,
+  SlidersHorizontal,
+  History,
+  PlusCircle,
+  X,
+  Key,
+  ShieldCheck,
+  AlertCircle,
+  FileSpreadsheet,
+  CheckCircle,
+  XCircle,
+  HelpCircle,
+  RefreshCw,
+  Fingerprint,
 } from 'lucide-react';
 import { db } from '../../services/db';
 import { auth } from '../../services/firebase';
@@ -23,7 +38,7 @@ import { useAuth } from '../../context/AuthContext';
 import { QRService } from '../../services/qrService';
 import { NotificationService } from '../../services/notificationService';
 import { computeStudentCourseAnalytics } from '../../services/attendanceEngine';
-import { AttendanceSession, CourseOffering, Course, Teacher, TeacherAssignment } from '../../types';
+import { AttendanceSession, CourseOffering, Course, Teacher, TeacherAssignment, HardwareDevice, HardwareScanLog, ClassCountAuditLog, Student } from '../../types';
 import { getStatusBadgeClasses, getRiskBadgeClasses } from '../../utils/formatters';
 import { TeacherManualAttendance } from './TeacherManualAttendance';
 
@@ -159,8 +174,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [attendanceMethod, setAttendanceMethod] = useState<'QR' | 'FACE'>('QR');
   const [sessionNotes, setSessionNotes] = useState('');
 
-  // View mode tab: live, manual attendance, or analytics
-  const [activeViewTab, setActiveViewTab] = useState<'live' | 'manual' | 'analytics'>('live');
+  // View mode tab: live, manual attendance, class-count, hardware, or analytics
+  const [activeViewTab, setActiveViewTab] = useState<'live' | 'manual' | 'class-count' | 'hardware' | 'analytics'>('live');
 
   // Selected course for analytics view
   const [selectedCourseOfferingId, setSelectedCourseOfferingId] = useState<string>(
@@ -168,6 +183,34 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   );
   const [warningStatusMessage, setWarningStatusMessage] = useState<string | null>(null);
   const [isTriggeringWarning, setIsTriggeringWarning] = useState(false);
+
+  // Class Count Management states
+  const [adjustModalOffering, setAdjustModalOffering] = useState<CourseOffering | null>(null);
+  const [adjustCountInput, setAdjustCountInput] = useState<number>(0);
+  const [adjustReasonInput, setAdjustReasonInput] = useState<string>('');
+  const [adjustFeedback, setAdjustFeedback] = useState<{ success: boolean; message: string } | null>(null);
+  const [cancelModalSession, setCancelModalSession] = useState<AttendanceSession | null>(null);
+  const [cancelReasonInput, setCancelReasonInput] = useState<string>('');
+
+  // Hardware RFID & Fingerprint states
+  const [simulatedDeviceId, setSimulatedDeviceId] = useState<string>('DEV-R304-RFID');
+  const [simulatedCredType, setSimulatedCredType] = useState<'RFID' | 'FINGERPRINT'>('RFID');
+  const [simulatedCredId, setSimulatedCredId] = useState<string>('RFID-CS-2023-0101');
+  const [simulatedStudentId, setSimulatedStudentId] = useState<string>('');
+  const [hardwareScanFeedback, setHardwareScanFeedback] = useState<{ success: boolean; status?: string; message: string; record?: any } | null>(null);
+  const [isRegisterDeviceModalOpen, setIsRegisterDeviceModalOpen] = useState(false);
+  const [newDeviceForm, setNewDeviceForm] = useState({
+    deviceId: '',
+    name: '',
+    room: 'Room 304',
+    building: 'Academic Complex',
+    deviceType: 'RFID' as 'RFID' | 'FINGERPRINT' | 'DUAL',
+    apiKey: '',
+  });
+  const [deviceActionFeedback, setDeviceActionFeedback] = useState<string | null>(null);
+  const [linkModalStudent, setLinkModalStudent] = useState<Student | null>(null);
+  const [linkRfidInput, setLinkRfidInput] = useState<string>('');
+  const [linkFingerprintInput, setLinkFingerprintInput] = useState<string>('');
 
   // Keep active session in sync with allSessions
   useEffect(() => {
@@ -351,8 +394,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       <div className="flex border-b border-slate-200 space-x-2 sm:space-x-6 text-xs font-semibold overflow-x-auto pb-1">
         {[
           { id: 'live', label: 'Live Kiosk & Timetable', icon: QrCode },
-          { id: 'manual', label: 'Manual Attendance Sheet', icon: UserCheck },
-          { id: 'analytics', label: 'Student Cohort Analytics', icon: Users },
+          { id: 'manual', label: 'Manual Correction & Roll', icon: UserCheck },
+          { id: 'class-count', label: 'Class Count Management', icon: SlidersHorizontal },
+          { id: 'hardware', label: 'RFID / Fingerprint Hardware', icon: Cpu },
+          { id: 'analytics', label: 'Cohort Analytics & Risk', icon: Users },
         ].map(tab => {
           const Icon = tab.icon;
           return (
@@ -898,7 +943,899 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       </div>
       )}
 
-      {/* START ATTENDANCE MODAL */}
+      {/* TAB: TEACHER-MANAGED CLASS COUNT */}
+      {activeViewTab === 'class-count' && (
+        <div className="space-y-6">
+          {/* Header Card with Regulatory Formula */}
+          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-6 text-white border border-slate-800 shadow-md">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <SlidersHorizontal className="w-5 h-5 text-indigo-400" />
+                  <h3 className="text-base font-extrabold tracking-tight">Class Count & Conducted Lecture Management</h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
+                    Faculty Authorized Control
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
+                  Academic regulations mandate that attendance percentage is strictly computed against <strong>Conducted Classes</strong>, not scheduled totals. When classes are cancelled or university events occur, faculty can adjust the conducted tally with an audited reason.
+                </p>
+              </div>
+              <div className="bg-white/10 backdrop-blur-md px-4 py-3 rounded-xl border border-white/15 text-center shrink-0">
+                <div className="text-[10px] uppercase font-bold text-indigo-200 tracking-wider">Attendance Formula</div>
+                <div className="font-mono text-sm font-extrabold text-white mt-0.5">
+                  % = (Attended / Conducted) × 100
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {adjustFeedback && (
+            <div
+              className={`p-3.5 rounded-xl border text-xs flex items-center justify-between animate-fadeIn ${
+                adjustFeedback.success
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : 'bg-rose-50 border-rose-200 text-rose-800'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                {adjustFeedback.success ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                )}
+                <span>{adjustFeedback.message}</span>
+              </div>
+              <button
+                onClick={() => setAdjustFeedback(null)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Assigned Course Offerings Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-slate-900 text-sm">Course Offering Class Tallies</h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Scheduled versus actually conducted lectures for assigned courses
+                </p>
+              </div>
+              <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100">
+                {assignedCourseOfferings.length} Assigned Course(s)
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                  <tr>
+                    <th className="py-3 px-4">Course Code & Title</th>
+                    <th className="py-3 px-4">Cohort / Section</th>
+                    <th className="py-3 px-4 text-center">Scheduled Total</th>
+                    <th className="py-3 px-4 text-center">Conducted Classes</th>
+                    <th className="py-3 px-4 text-center">Remaining</th>
+                    <th className="py-3 px-4">Class Progress</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {assignedCourseOfferings.map(off => {
+                    const crs = courses.find(c => c.id === off.courseId);
+                    const batch = batches.find(b => b.id === off.batchId);
+                    const scheduled = off.plannedClasses || 35;
+                    const conducted = off.conductedClasses || 0;
+                    const remaining = Math.max(0, scheduled - conducted);
+                    const pct = scheduled > 0 ? Math.min(100, Math.round((conducted / scheduled) * 100)) : 0;
+
+                    return (
+                      <tr key={off.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                              {crs?.code}
+                            </span>
+                            <span className="font-semibold text-slate-900">{crs?.name}</span>
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-600">
+                          {batch?.name || 'Assigned'} • Sec {off.section} (Yr {off.year}, Sem {off.semester})
+                        </td>
+                        <td className="py-3.5 px-4 text-center font-bold text-slate-700 font-mono">
+                          {scheduled}
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          <span className="font-bold text-indigo-700 font-mono bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-200">
+                            {conducted}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-center font-semibold text-slate-500 font-mono">
+                          {remaining}
+                        </td>
+                        <td className="py-3.5 px-4 w-48">
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[10px] text-slate-500">
+                              <span>{pct}% held</span>
+                              <span className="font-semibold">{conducted}/{scheduled}</span>
+                            </div>
+                            <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                              <div
+                                className="bg-indigo-600 h-full rounded-full transition-all duration-300"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <button
+                            onClick={() => {
+                              setAdjustModalOffering(off);
+                              setAdjustCountInput(off.conductedClasses || 0);
+                              setAdjustReasonInput('');
+                            }}
+                            className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition inline-flex items-center space-x-1 cursor-pointer"
+                          >
+                            <SlidersHorizontal className="w-3.5 h-3.5" />
+                            <span>Adjust Count</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Recent Class Count Audit History */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <History className="w-4 h-4 text-slate-500" />
+                <h4 className="font-bold text-slate-900 text-sm">Class Count Audit Trail</h4>
+              </div>
+              <span className="text-[11px] text-slate-500">
+                Every modification is permanently logged with faculty identity and reason
+              </span>
+            </div>
+
+            {db.getClassCountAudits().length === 0 ? (
+              <div className="p-8 text-center text-slate-400 text-xs">
+                No conducted class adjustments recorded yet.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="py-2.5 px-4">Course</th>
+                      <th className="py-2.5 px-4">Adjusted By</th>
+                      <th className="py-2.5 px-4 text-center">Old Conducted</th>
+                      <th className="py-2.5 px-4 text-center">New Conducted</th>
+                      <th className="py-2.5 px-4 text-center">Scheduled</th>
+                      <th className="py-2.5 px-4">Audit Reason</th>
+                      <th className="py-2.5 px-4">Timestamp</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
+                    {db.getClassCountAudits().slice(0, 10).map(audit => (
+                      <tr key={audit.id} className="hover:bg-slate-50">
+                        <td className="py-2.5 px-4 font-bold text-indigo-700">{audit.courseCode}</td>
+                        <td className="py-2.5 px-4 font-sans text-slate-700">{audit.changedBy}</td>
+                        <td className="py-2.5 px-4 text-center text-rose-600 font-bold">{audit.oldConducted}</td>
+                        <td className="py-2.5 px-4 text-center text-emerald-600 font-bold">{audit.newConducted}</td>
+                        <td className="py-2.5 px-4 text-center text-slate-500">{audit.scheduledTotal}</td>
+                        <td className="py-2.5 px-4 font-sans text-slate-600 max-w-xs truncate">{audit.reason}</td>
+                        <td className="py-2.5 px-4 text-slate-400 text-[10px]">
+                          {new Date(audit.timestamp).toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB: RFID & FINGERPRINT HARDWARE ATTENDANCE */}
+      {activeViewTab === 'hardware' && (
+        <div className="space-y-6">
+          {/* Header Card with Privacy Declaration */}
+          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 rounded-2xl p-6 text-white border border-slate-800 shadow-md">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <Cpu className="w-5 h-5 text-indigo-400" />
+                  <h3 className="text-base font-extrabold tracking-tight">Classroom Hardware Scanners & IoT Terminal</h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                    Live Hardware Endpoint Ready
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
+                  Support for physical wall-mounted RFID card readers and optical fingerprint sensors. Microcontrollers (ESP32/Arduino) authenticate via HMAC token and submit scans directly to <code className="bg-white/10 px-1 py-0.5 rounded text-indigo-200">POST /api/hardware/scan</code>.
+                </p>
+                <div className="mt-3 flex items-center space-x-2 text-[11px] text-indigo-200/90 bg-indigo-900/40 px-3 py-1.5 rounded-xl border border-indigo-500/20 w-fit">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span><strong>Zero Raw Biometrics:</strong> Raw fingerprint images are never stored or transmitted. The system processes only irreversible 256-bit template feature vectors.</span>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                <button
+                  onClick={() => setIsRegisterDeviceModalOpen(true)}
+                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-xs inline-flex items-center justify-center space-x-1.5 cursor-pointer"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  <span>Register Device</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Interactive Hardware Scan Simulator */}
+          <div className="bg-white rounded-2xl border border-indigo-200 shadow-md p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div className="flex items-center space-x-2">
+                <Radio className="w-5 h-5 text-indigo-600 animate-pulse" />
+                <h4 className="font-extrabold text-slate-900 text-sm">Interactive Hardware Scan Simulator</h4>
+              </div>
+              <span className="text-xs text-slate-500">
+                Simulate real physical scans from classroom wall readers
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+              {/* Select Device */}
+              <div>
+                <label className="block text-slate-600 font-semibold mb-1">Classroom Device</label>
+                <select
+                  value={simulatedDeviceId}
+                  onChange={e => {
+                    setSimulatedDeviceId(e.target.value);
+                    const dev = db.getHardwareDevices().find(d => d.deviceId === e.target.value);
+                    if (dev) {
+                      setSimulatedCredType(dev.deviceType === 'FINGERPRINT' ? 'FINGERPRINT' : 'RFID');
+                    }
+                  }}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 font-medium"
+                >
+                  {db.getHardwareDevices().map(d => (
+                    <option key={d.id} value={d.deviceId}>
+                      {d.name} ({d.room}) - {d.deviceType}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Credential Type */}
+              <div>
+                <label className="block text-slate-600 font-semibold mb-1">Credential Type</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSimulatedCredType('RFID');
+                      const s = allStudents.find(st => st.rfidCardUid);
+                      if (s && s.rfidCardUid) setSimulatedCredId(s.rfidCardUid);
+                    }}
+                    className={`py-2 px-2 rounded-xl border flex items-center justify-center space-x-1.5 font-bold ${
+                      simulatedCredType === 'RFID'
+                        ? 'bg-indigo-50 border-indigo-500 text-indigo-700'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Radio className="w-3.5 h-3.5" />
+                    <span>RFID Card</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSimulatedCredType('FINGERPRINT');
+                      const s = allStudents.find(st => st.fingerprintTemplateId);
+                      if (s && s.fingerprintTemplateId) setSimulatedCredId(s.fingerprintTemplateId);
+                    }}
+                    className={`py-2 px-2 rounded-xl border flex items-center justify-center space-x-1.5 font-bold ${
+                      simulatedCredType === 'FINGERPRINT'
+                        ? 'bg-indigo-50 border-indigo-500 text-indigo-700'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Fingerprint className="w-3.5 h-3.5" />
+                    <span>Fingerprint</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Student Quick Pick */}
+              <div>
+                <label className="block text-slate-600 font-semibold mb-1">Select Enrolled Student</label>
+                <select
+                  value={simulatedStudentId}
+                  onChange={e => {
+                    const sid = e.target.value;
+                    setSimulatedStudentId(sid);
+                    const stu = allStudents.find(s => s.id === sid);
+                    if (stu) {
+                      if (simulatedCredType === 'RFID') {
+                        setSimulatedCredId(stu.rfidCardUid || 'RFID-' + stu.studentId);
+                      } else {
+                        setSimulatedCredId(stu.fingerprintTemplateId || 'FP-TMPL-' + stu.studentId);
+                      }
+                    }
+                  }}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 font-medium"
+                >
+                  <option value="">-- Choose Student or enter Credential --</option>
+                  {allStudents.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.studentId})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Credential ID input */}
+              <div>
+                <label className="block text-slate-600 font-semibold mb-1">
+                  {simulatedCredType === 'RFID' ? 'RFID Card UID' : 'Fingerprint Template Hash'}
+                </label>
+                <input
+                  type="text"
+                  value={simulatedCredId}
+                  onChange={e => setSimulatedCredId(e.target.value)}
+                  placeholder={simulatedCredType === 'RFID' ? 'e.g. RFID-CS-2023-0101' : 'e.g. FP-TMPL-90412-A'}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono font-semibold"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <div className="flex items-center space-x-2 text-[11px] text-slate-500">
+                <span>Quick Edge-Case Tests:</span>
+                <button
+                  type="button"
+                  onClick={() => setSimulatedCredId('UNKNOWN-CARD-9999')}
+                  className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono"
+                >
+                  Unknown Card
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const stu = allStudents[0];
+                    if (stu) {
+                      setSimulatedCredId(stu.rfidCardUid || 'RFID-' + stu.studentId);
+                      setSimulatedCredType('RFID');
+                    }
+                  }}
+                  className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono"
+                >
+                  Valid Student Scan
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const dev = db.getHardwareDevices().find(d => d.deviceId === simulatedDeviceId);
+                  const apiKey = dev?.apiKey || 'dev-secret-key-304';
+                  const res = db.processHardwareScan({
+                    deviceId: simulatedDeviceId,
+                    credentialId: simulatedCredId.trim(),
+                    credentialType: simulatedCredType,
+                    timestamp: new Date().toISOString(),
+                    apiKey,
+                  });
+                  setHardwareScanFeedback({
+                    success: res.success,
+                    status: res.status,
+                    message: res.message,
+                    record: res.record,
+                  });
+                  onRefresh();
+                }}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-xs inline-flex items-center space-x-1.5 cursor-pointer"
+              >
+                <Radio className="w-4 h-4" />
+                <span>Simulate Hardware Tap</span>
+              </button>
+            </div>
+
+            {/* Scan Feedback Banner */}
+            {hardwareScanFeedback && (
+              <div
+                className={`p-4 rounded-xl border text-xs space-y-1.5 animate-fadeIn ${
+                  hardwareScanFeedback.success
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                    : hardwareScanFeedback.status === 'DUPLICATE'
+                    ? 'bg-amber-50 border-amber-300 text-amber-900'
+                    : 'bg-rose-50 border-rose-300 text-rose-900'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2 font-bold">
+                    {hardwareScanFeedback.success ? (
+                      <CheckCircle className="w-5 h-5 text-emerald-600" />
+                    ) : hardwareScanFeedback.status === 'DUPLICATE' ? (
+                      <AlertTriangle className="w-5 h-5 text-amber-600" />
+                    ) : (
+                      <XCircle className="w-5 h-5 text-rose-600" />
+                    )}
+                    <span className="text-sm">Scan Result: {hardwareScanFeedback.status}</span>
+                  </div>
+                  <span className="font-mono text-[11px] text-slate-500">
+                    {new Date().toLocaleTimeString()}
+                  </span>
+                </div>
+                <p className="text-xs">{hardwareScanFeedback.message}</p>
+                {hardwareScanFeedback.record && (
+                  <div className="text-[11px] font-mono text-slate-600 pt-1 border-t border-slate-200/60">
+                    Record ID: {hardwareScanFeedback.record.id} • Method: {hardwareScanFeedback.record.method} • Source: <strong>{hardwareScanFeedback.record.source || 'hardware'}</strong>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Registered Classroom Devices Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-slate-900 text-sm">Classroom Hardware Readers</h4>
+                <p className="text-xs text-slate-500 mt-0.5">Physical RFID & Fingerprint scanners deployed in lecture halls</p>
+              </div>
+              <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                {db.getHardwareDevices().length} Devices Registered
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                  <tr>
+                    <th className="py-2.5 px-4">Device ID & Name</th>
+                    <th className="py-2.5 px-4">Classroom</th>
+                    <th className="py-2.5 px-4">Reader Type</th>
+                    <th className="py-2.5 px-4">Status</th>
+                    <th className="py-2.5 px-4">API Key Token</th>
+                    <th className="py-2.5 px-4">Last Heartbeat</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {db.getHardwareDevices().map(dev => (
+                    <tr key={dev.id} className="hover:bg-slate-50">
+                      <td className="py-3 px-4">
+                        <div className="font-bold text-slate-900">{dev.name}</div>
+                        <div className="text-[11px] font-mono text-slate-400">{dev.deviceId}</div>
+                      </td>
+                      <td className="py-3 px-4 font-semibold text-slate-700">{dev.room}</td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                          {dev.deviceType}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          <span>{dev.status}</span>
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-mono text-[11px] text-slate-500">
+                        ••••••••{dev.apiKey.slice(-4)}
+                      </td>
+                      <td className="py-3 px-4 text-slate-500 text-[11px]">
+                        {dev.lastHeartbeat ? new Date(dev.lastHeartbeat).toLocaleTimeString() : 'Online'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Student Biometric & RFID Credential Registry */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-slate-900 text-sm">Student Hardware Biometric Registry</h4>
+                <p className="text-xs text-slate-500 mt-0.5">Pair student IDs with RFID UIDs and optical fingerprint template IDs</p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto max-h-72">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 sticky top-0">
+                  <tr>
+                    <th className="py-2.5 px-4">Student Name & Roll</th>
+                    <th className="py-2.5 px-4">Class Year & Sem</th>
+                    <th className="py-2.5 px-4">RFID Card UID</th>
+                    <th className="py-2.5 px-4">Fingerprint Template ID</th>
+                    <th className="py-2.5 px-4 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {allStudents.map(stu => (
+                    <tr key={stu.id} className="hover:bg-slate-50">
+                      <td className="py-2.5 px-4">
+                        <span className="font-bold text-slate-900 mr-2">{stu.name}</span>
+                        <span className="font-mono text-[11px] text-slate-500">({stu.studentId})</span>
+                      </td>
+                      <td className="py-2.5 px-4 text-slate-600">
+                        Yr {stu.year}, Sem {stu.semester}
+                      </td>
+                      <td className="py-2.5 px-4 font-mono text-[11px]">
+                        {stu.rfidCardUid ? (
+                          <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            {stu.rfidCardUid}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 italic">Not Linked</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-4 font-mono text-[11px]">
+                        {stu.fingerprintTemplateId ? (
+                          <span className="text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                            {stu.fingerprintTemplateId}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 italic">Not Linked</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-4 text-right">
+                        <button
+                          onClick={() => {
+                            setLinkModalStudent(stu);
+                            setLinkRfidInput(stu.rfidCardUid || '');
+                            setLinkFingerprintInput(stu.fingerprintTemplateId || '');
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] transition cursor-pointer"
+                        >
+                          Configure
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Hardware Scan Logs */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <History className="w-4 h-4 text-slate-500" />
+                <h4 className="font-bold text-slate-900 text-sm">Classroom Device Scan Event Logs</h4>
+              </div>
+              <span className="text-[11px] text-slate-500">
+                Real-time stream of all physical scans, deduplications, and validations
+              </span>
+            </div>
+
+            {db.getHardwareScanLogs().length === 0 ? (
+              <div className="p-8 text-center text-slate-400 text-xs">
+                No scan events recorded yet. Try testing a scan in the simulator above!
+              </div>
+            ) : (
+              <div className="overflow-x-auto max-h-72">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 sticky top-0">
+                    <tr>
+                      <th className="py-2 px-4">Device & Room</th>
+                      <th className="py-2 px-4">Credential ID</th>
+                      <th className="py-2 px-4">Type</th>
+                      <th className="py-2 px-4">Student</th>
+                      <th className="py-2 px-4">Result Status</th>
+                      <th className="py-2 px-4">Details / Error</th>
+                      <th className="py-2 px-4">Timestamp</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-[11px]">
+                    {db.getHardwareScanLogs().slice(0, 20).map(log => (
+                      <tr key={log.id} className="hover:bg-slate-50">
+                        <td className="py-2 px-4 font-semibold text-slate-800">
+                          {log.deviceId}
+                        </td>
+                        <td className="py-2 px-4 font-mono text-slate-600">{log.credentialId}</td>
+                        <td className="py-2 px-4">
+                          <span className="px-1.5 py-0.2 rounded text-[10px] bg-slate-100 text-slate-700">
+                            {log.credentialType}
+                          </span>
+                        </td>
+                        <td className="py-2 px-4 font-medium text-slate-900">{log.studentName || '-'}</td>
+                        <td className="py-2 px-4">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              log.status === 'SUCCESS'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : log.status === 'DUPLICATE'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-rose-100 text-rose-800'
+                            }`}
+                          >
+                            {log.status}
+                          </span>
+                        </td>
+                        <td className="py-2 px-4 text-slate-500 max-w-xs truncate">{log.reason || '-'}</td>
+                        <td className="py-2 px-4 text-slate-400 text-[10px]">
+                          {new Date(log.timestamp).toLocaleTimeString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ADJUST CONDUCTED CLASS COUNT */}
+      {adjustModalOffering && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-slate-900 text-sm">
+                Adjust Conducted Classes Count
+              </h3>
+              <button
+                onClick={() => setAdjustModalOffering(null)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1">
+              <div className="font-bold text-slate-800">
+                {courses.find(c => c.id === adjustModalOffering.courseId)?.code} -{' '}
+                {courses.find(c => c.id === adjustModalOffering.courseId)?.name}
+              </div>
+              <div className="text-slate-500">
+                Scheduled Total: <strong>{adjustModalOffering.plannedClasses} classes</strong> • Current Conducted: <strong>{adjustModalOffering.conductedClasses} classes</strong>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">
+                  New Conducted Classes Count (Must be between 0 and {adjustModalOffering.plannedClasses})
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max={adjustModalOffering.plannedClasses}
+                  value={adjustCountInput}
+                  onChange={e => setAdjustCountInput(parseInt(e.target.value) || 0)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">
+                  Mandatory Adjustment Reason <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  value={adjustReasonInput}
+                  onChange={e => setAdjustReasonInput(e.target.value)}
+                  placeholder="e.g. Class on Oct 24 cancelled due to university convocation, or scheduled makeup lecture added."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100">
+              <button
+                onClick={() => setAdjustModalOffering(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const res = db.adjustConductedClasses({
+                    courseOfferingId: adjustModalOffering.id,
+                    newConductedCount: adjustCountInput,
+                    changedBy: currentTeacher.name,
+                    reason: adjustReasonInput,
+                    userRole: userProfile?.role,
+                    teacherId: currentTeacher.id,
+                  });
+                  setAdjustFeedback({ success: res.success, message: res.message });
+                  if (res.success) {
+                    setAdjustModalOffering(null);
+                    onRefresh();
+                  }
+                }}
+                disabled={!adjustReasonInput.trim()}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Save Adjustment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: REGISTER HARDWARE DEVICE */}
+      {isRegisterDeviceModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-slate-900 text-sm">Register Classroom Hardware Reader</h3>
+              <button
+                onClick={() => setIsRegisterDeviceModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-600 font-semibold mb-1">Device ID / MAC Address</label>
+                <input
+                  type="text"
+                  placeholder="e.g. DEV-R501-DUAL"
+                  value={newDeviceForm.deviceId}
+                  onChange={e => setNewDeviceForm({ ...newDeviceForm, deviceId: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-600 font-semibold mb-1">Device Name / Tag</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Lab 501 Wall Terminal"
+                  value={newDeviceForm.name}
+                  onChange={e => setNewDeviceForm({ ...newDeviceForm, name: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-600 font-semibold mb-1">Classroom / Room Number</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Room 304 or Lab 402"
+                  value={newDeviceForm.room}
+                  onChange={e => setNewDeviceForm({ ...newDeviceForm, room: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-600 font-semibold mb-1">Hardware Sensor Type</label>
+                <select
+                  value={newDeviceForm.deviceType}
+                  onChange={e => setNewDeviceForm({ ...newDeviceForm, deviceType: e.target.value as any })}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300"
+                >
+                  <option value="RFID">RFID Card Scanner (RC522 / PN532)</option>
+                  <option value="FINGERPRINT">Optical Fingerprint Scanner (R307 / AS608)</option>
+                  <option value="DUAL">Dual RFID + Fingerprint Terminal</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-600 font-semibold mb-1">Device Secret API Key</label>
+                <input
+                  type="text"
+                  placeholder="Enter secret key for device authentication"
+                  value={newDeviceForm.apiKey}
+                  onChange={e => setNewDeviceForm({ ...newDeviceForm, apiKey: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100">
+              <button
+                onClick={() => setIsRegisterDeviceModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (!newDeviceForm.deviceId || !newDeviceForm.name) return;
+                  db.registerHardwareDevice({
+                    deviceId: newDeviceForm.deviceId.trim(),
+                    name: newDeviceForm.name.trim(),
+                    room: newDeviceForm.room.trim(),
+                    building: newDeviceForm.building.trim() || 'Academic Complex',
+                    deviceType: newDeviceForm.deviceType,
+                    apiKey: newDeviceForm.apiKey.trim() || 'dev-key-' + Date.now(),
+                    status: 'ACTIVE',
+                  });
+                  setIsRegisterDeviceModalOpen(false);
+                  onRefresh();
+                }}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
+              >
+                Register Device
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: LINK STUDENT BIOMETRIC / RFID CREDENTIALS */}
+      {linkModalStudent && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-slate-900 text-sm">
+                Pair Hardware Credentials for {linkModalStudent.name}
+              </h3>
+              <button
+                onClick={() => setLinkModalStudent(null)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-600 font-semibold mb-1">RFID Card Serial UID</label>
+                <input
+                  type="text"
+                  placeholder="e.g. RFID-CS-2023-0101 or 4-byte HEX"
+                  value={linkRfidInput}
+                  onChange={e => setLinkRfidInput(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-600 font-semibold mb-1">
+                  Fingerprint Template Feature ID / Hash
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. FP-TMPL-90412-A"
+                  value={linkFingerprintInput}
+                  onChange={e => setLinkFingerprintInput(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Note: Only cryptographic template IDs or hashes are stored; raw biometric images are never uploaded.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100">
+              <button
+                onClick={() => setLinkModalStudent(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  db.linkStudentBiometrics({
+                    studentId: linkModalStudent.id,
+                    rfidCardUid: linkRfidInput.trim() || undefined,
+                    fingerprintTemplateId: linkFingerprintInput.trim() || undefined,
+                  });
+                  setLinkModalStudent(null);
+                  onRefresh();
+                }}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
+              >
+                Save Credentials
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {isStartModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4">

@@ -17,6 +17,12 @@ import {
   UserPlus,
   Plus,
   Check,
+  Lock,
+  Unlock,
+  Trash2,
+  Info,
+  Layers,
+  Tag,
 } from 'lucide-react';
 import { db } from '../../services/db';
 import { auth } from '../../services/firebase';
@@ -611,90 +617,170 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         </div>
       )}
 
-      {/* TAB: ADD / REGISTER DESIGNATED COURSES */}
-      {activeTab === 'add_courses' && (
-        <div className="space-y-4">
-          <div className="bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-5 border border-indigo-800/50 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
-            <div>
-              <div className="flex items-center space-x-2">
-                <span className="font-bold text-sm text-white">Department Curriculum Course Catalog</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  {student.status === 'ACTIVE' ? 'ACADEMIC STANDING: ELIGIBLE' : student.status}
+      {/* TAB: SELF-ENROLLMENT & COURSE REGISTRATION */}
+      {activeTab === 'add_courses' && (() => {
+        const activeWindow = db.getActiveEnrollmentWindow();
+        const windowStatus = db.isEnrollmentWindowOpen(activeWindow);
+        const enrolledOfferingIds = new Set(enrollments.map(e => e.courseOfferingId));
+
+        // Calculate student's current total enrolled credits
+        const currentEnrolledOfferings = enrollments
+          .map(e => courseOfferings.find(co => co.id === e.courseOfferingId))
+          .filter((co): co is NonNullable<typeof co> => Boolean(co));
+        const currentCredits = currentEnrolledOfferings.reduce((sum, co) => {
+          const c = courses.find(cr => cr.id === co.courseId);
+          return sum + (c?.credit || 0);
+        }, 0);
+        const maxCredits = activeWindow?.maxCreditsPerSemester || 25.0;
+
+        // 1. Regular Courses: Exact Department, Year, and Semester match
+        const regularOfferings = courseOfferings.filter(off => {
+          const crs = courses.find(c => c.id === off.courseId);
+          const deptMatch = (off.departmentId || crs?.departmentId) === student.departmentId;
+          return deptMatch && off.status === 'ACTIVE' && off.year === student.year && off.semester === student.semester;
+        });
+
+        // 2. Backlog / Retake Courses: Earlier semesters within same program
+        const retakeOfferings = courseOfferings.filter(off => {
+          const crs = courses.find(c => c.id === off.courseId);
+          const deptMatch = (off.departmentId || crs?.departmentId) === student.departmentId;
+          const isEarlier =
+            off.year < student.year ||
+            (off.year === student.year && off.semester < student.semester);
+          return deptMatch && off.status === 'ACTIVE' && isEarlier;
+        });
+
+        return (
+          <div className="space-y-6">
+            {/* Enrollment Term & Window Status Banner */}
+            <div className="bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-6 border border-indigo-800/50 shadow-md">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <span className="font-extrabold text-base text-white">
+                      {activeWindow?.termName || 'Academic Term Registration'}
+                    </span>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                        windowStatus.isOpen
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                          : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                      }`}
+                    >
+                      {windowStatus.isOpen ? 'REGISTRATION WINDOW OPEN' : 'REGISTRATION CLOSED'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-indigo-200 mt-1 max-w-xl">
+                    {windowStatus.isOpen
+                      ? `Open from ${new Date(activeWindow?.startDate || '').toLocaleDateString()} until ${new Date(activeWindow?.endDate || '').toLocaleDateString()}. You can self-enroll and drop courses with 1 tap.`
+                      : (windowStatus.reason || 'Course registration is currently locked. Adjustments require administrative override.')}
+                  </p>
+                </div>
+
+                {/* Credit Limit & Enrolled Count Counters */}
+                <div className="flex items-center space-x-3 text-xs shrink-0">
+                  <div className="bg-white/10 px-4 py-2.5 rounded-xl border border-white/15 text-center">
+                    <div className="text-[10px] text-indigo-300 font-medium uppercase tracking-wider">Credits Enrolled</div>
+                    <div className="font-mono font-extrabold text-base text-white">
+                      {currentCredits.toFixed(1)} / {maxCredits.toFixed(1)} Cr
+                    </div>
+                  </div>
+                  <div className="bg-white/10 px-4 py-2.5 rounded-xl border border-white/15 text-center">
+                    <div className="text-[10px] text-indigo-300 font-medium uppercase tracking-wider">Courses</div>
+                    <div className="font-extrabold text-base text-white">{enrollments.length}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Credit Progress Bar */}
+              <div className="mt-4 pt-3 border-t border-white/10">
+                <div className="flex items-center justify-between text-[11px] text-indigo-200 mb-1">
+                  <span>Semester Credit Cap: <strong>{currentCredits} Credits</strong> registered</span>
+                  <span className="font-semibold">{Math.min(100, Math.round((currentCredits / maxCredits) * 100))}% of Maximum</span>
+                </div>
+                <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${
+                      currentCredits > maxCredits ? 'bg-rose-400' : 'bg-emerald-400'
+                    }`}
+                    style={{ width: `${Math.min(100, (currentCredits / maxCredits) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {courseActionMsg && (
+              <div
+                className={`p-3.5 rounded-xl border text-xs flex items-center space-x-2 animate-fadeIn ${
+                  courseActionMsg.success
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                    : 'bg-rose-50 border-rose-300 text-rose-900'
+                }`}
+              >
+                {courseActionMsg.success ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                )}
+                <span>{courseActionMsg.text}</span>
+              </div>
+            )}
+
+            {/* SECTION 1: REGULAR SEMESTER COURSES */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-slate-900 text-xs">
+                    Designated Regular Courses for Year {student.year}, Semester {student.semester}
+                  </h4>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Curriculum offerings for {studentDept?.name || student.departmentId}
+                  </p>
+                </div>
+                <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                  {regularOfferings.length} Available Course(s)
                 </span>
               </div>
-              <p className="text-xs text-indigo-200 mt-1">
-                As an eligible student in <strong>{studentDept?.name || student.departmentId}</strong>, you can add any designated courses offered for your syllabus.
-              </p>
-            </div>
-            <div className="flex items-center space-x-3 text-xs shrink-0">
-              <div className="bg-white/10 px-3 py-2 rounded-xl border border-white/10 text-center">
-                <div className="text-[10px] text-indigo-300">Enrolled Courses</div>
-                <div className="font-black text-sm text-white">{enrollments.length}</div>
-              </div>
-            </div>
-          </div>
 
-          {courseActionMsg && (
-            <div
-              className={`p-3 rounded-xl border text-xs flex items-center space-x-2 ${
-                courseActionMsg.success
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                  : 'bg-rose-50 border-rose-200 text-rose-800'
-              }`}
-            >
-              {courseActionMsg.success ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              ) : (
-                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-              )}
-              <span>{courseActionMsg.text}</span>
-            </div>
-          )}
-
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between">
-              <h4 className="font-bold text-slate-800 text-xs">
-                Designated Course Offerings for {studentDept?.code || student.departmentId}
-              </h4>
-              <span className="text-[11px] text-slate-500">
-                Self-Service Course Addition
-              </span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
-                  <tr>
-                    <th className="py-2.5 px-4">Course Code & Name</th>
-                    <th className="py-2.5 px-4">Credits & Type</th>
-                    <th className="py-2.5 px-4">Cohort / Level</th>
-                    <th className="py-2.5 px-4">Eligibility Status</th>
-                    <th className="py-2.5 px-4 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {courseOfferings
-                    .filter(off => {
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="py-2.5 px-4">Course Code & Name</th>
+                      <th className="py-2.5 px-4">Credits & Type</th>
+                      <th className="py-2.5 px-4">Section / Capacity</th>
+                      <th className="py-2.5 px-4">Enrollment Status</th>
+                      <th className="py-2.5 px-4 text-right">One-Tap Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {regularOfferings.map(off => {
                       const crs = courses.find(c => c.id === off.courseId);
-                      return (off.departmentId || crs?.departmentId) === student.departmentId && off.status === 'ACTIVE';
-                    })
-                    .map(off => {
-                      const crs = courses.find(c => c.id === off.courseId);
-                      const isEnrolled = enrollments.some(e => e.courseOfferingId === off.id);
-                      const isEligible = student.status === 'ACTIVE';
+                      const isEnrolled = enrolledOfferingIds.has(off.id);
+                      const activeSeats = db.getStudentEnrollments().filter(
+                        e => e.courseOfferingId === off.id && e.status === 'ENROLLED'
+                      ).length;
+                      const capacity = off.capacity || 60;
+                      const isFull = activeSeats >= capacity;
 
-                      const handleSelfEnroll = () => {
-                        const res = db.enrollStudent(student.id, off.id);
-                        if (res.success) {
-                          setCourseActionMsg({
-                            success: true,
-                            text: `Successfully enrolled in ${crs?.code} - ${crs?.name}!`,
-                          });
-                          onRefresh();
-                          setTimeout(() => setCourseActionMsg(null), 4000);
-                        } else {
-                          setCourseActionMsg({ success: false, text: res.message });
-                        }
+                      const handleEnroll = () => {
+                        const res = db.enrollStudentSelf({
+                          studentId: student.id,
+                          courseOfferingId: off.id,
+                          isRetake: false,
+                        });
+                        setCourseActionMsg({ success: res.success, text: res.message });
+                        if (res.success) onRefresh();
+                      };
+
+                      const handleDrop = () => {
+                        const res = db.dropStudentCourse({
+                          studentId: student.id,
+                          courseOfferingId: off.id,
+                          reason: 'Student self-drop during active registration window',
+                        });
+                        setCourseActionMsg({ success: res.success, text: res.message });
+                        if (res.success) onRefresh();
                       };
 
                       return (
@@ -702,14 +788,22 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                           <td className="py-3 px-4">
                             <span className="font-mono font-bold text-indigo-700 mr-2">{crs?.code}</span>
                             <span className="font-semibold text-slate-900">{crs?.name}</span>
+                            {crs?.prerequisiteCourseIds && crs.prerequisiteCourseIds.length > 0 && (
+                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                Prereq: {crs.prerequisiteCourseIds.map(pid => courses.find(c => c.id === pid)?.code || pid).join(', ')}
+                              </div>
+                            )}
                           </td>
                           <td className="py-3 px-4">
                             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
                               {crs?.type} • {crs?.credit} Cr
                             </span>
                           </td>
-                          <td className="py-3 px-4 text-slate-500 text-[11px]">
-                            Year {off.year}, Sem {off.semester} (Sec {off.section})
+                          <td className="py-3 px-4 text-slate-600 text-[11px]">
+                            Sec {off.section} •{' '}
+                            <span className={isFull ? 'text-rose-600 font-bold' : 'text-slate-500'}>
+                              {activeSeats}/{capacity} seats
+                            </span>
                           </td>
                           <td className="py-3 px-4">
                             {isEnrolled ? (
@@ -717,41 +811,170 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                                 <Check className="w-3 h-3 text-emerald-600" />
                                 <span>Currently Enrolled</span>
                               </span>
-                            ) : isEligible ? (
-                              <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                <span>Eligible to Enroll</span>
+                            ) : isFull ? (
+                              <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                <span>Class Full</span>
                               </span>
                             ) : (
-                              <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                                <AlertTriangle className="w-3 h-3 text-amber-600" />
-                                <span>Ineligible Account</span>
+                              <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                                <span>Available to Enroll</span>
                               </span>
                             )}
                           </td>
                           <td className="py-3 px-4 text-right">
                             {isEnrolled ? (
-                              <span className="text-slate-400 text-xs font-semibold">Enrolled</span>
+                              <button
+                                onClick={handleDrop}
+                                disabled={!windowStatus.isOpen}
+                                title={!windowStatus.isOpen ? 'Registration window closed' : 'Drop this course'}
+                                className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs transition inline-flex items-center space-x-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Drop Course</span>
+                              </button>
                             ) : (
                               <button
-                                onClick={handleSelfEnroll}
-                                disabled={!isEligible}
-                                className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center space-x-1 cursor-pointer"
+                                onClick={handleEnroll}
+                                disabled={!windowStatus.isOpen || isFull}
+                                title={!windowStatus.isOpen ? 'Registration window closed' : isFull ? 'Course offering is full' : '1-tap enroll'}
+                                className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition inline-flex items-center space-x-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                               >
-                                <UserPlus className="w-3.5 h-3.5 mr-1" />
-                                <span>Add Course</span>
+                                <UserPlus className="w-3.5 h-3.5" />
+                                <span>Enroll Now</span>
                               </button>
                             )}
                           </td>
                         </tr>
                       );
                     })}
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* SECTION 2: BACKLOG & RETAKE COURSES */}
+            <div className="bg-white rounded-2xl border border-amber-200/80 shadow-xs overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-amber-200 bg-amber-50/60 flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Tag className="w-4 h-4 text-amber-600" />
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-xs">
+                      Eligible Backlog & Retake Courses (Earlier Semesters)
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      For irregular students or improving earlier grades; clearly designated as Retake
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                  Retake Eligible
+                </span>
+              </div>
+
+              {retakeOfferings.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-400">
+                  No earlier semester backlog courses available for your syllabus.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                      <tr>
+                        <th className="py-2.5 px-4">Course Code & Name</th>
+                        <th className="py-2.5 px-4">Offering Level</th>
+                        <th className="py-2.5 px-4">Credits & Type</th>
+                        <th className="py-2.5 px-4">Enrollment Classification</th>
+                        <th className="py-2.5 px-4 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {retakeOfferings.map(off => {
+                        const crs = courses.find(c => c.id === off.courseId);
+                        const isEnrolled = enrolledOfferingIds.has(off.id);
+                        const activeSeats = db.getStudentEnrollments().filter(
+                          e => e.courseOfferingId === off.id && e.status === 'ENROLLED'
+                        ).length;
+                        const capacity = off.capacity || 60;
+                        const isFull = activeSeats >= capacity;
+
+                        const handleRetakeEnroll = () => {
+                          const res = db.enrollStudentSelf({
+                            studentId: student.id,
+                            courseOfferingId: off.id,
+                            isRetake: true,
+                          });
+                          setCourseActionMsg({ success: res.success, text: res.message });
+                          if (res.success) onRefresh();
+                        };
+
+                        const handleDrop = () => {
+                          const res = db.dropStudentCourse({
+                            studentId: student.id,
+                            courseOfferingId: off.id,
+                            reason: 'Student dropped retake enrollment',
+                          });
+                          setCourseActionMsg({ success: res.success, text: res.message });
+                          if (res.success) onRefresh();
+                        };
+
+                        return (
+                          <tr key={off.id} className="hover:bg-amber-50/30 transition-colors">
+                            <td className="py-3 px-4">
+                              <span className="font-mono font-bold text-amber-700 mr-2">{crs?.code}</span>
+                              <span className="font-semibold text-slate-900">{crs?.name}</span>
+                            </td>
+                            <td className="py-3 px-4 text-slate-500 text-[11px]">
+                              Year {off.year}, Sem {off.semester} (Sec {off.section})
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                                {crs?.type} • {crs?.credit} Cr
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              {isEnrolled ? (
+                                <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                  <Tag className="w-3 h-3 text-amber-700" />
+                                  <span>Enrolled as Retake</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700">
+                                  <span>Eligible Retake</span>
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              {isEnrolled ? (
+                                <button
+                                  onClick={handleDrop}
+                                  disabled={!windowStatus.isOpen}
+                                  className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs transition inline-flex items-center space-x-1 cursor-pointer disabled:opacity-40"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>Drop Retake</span>
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={handleRetakeEnroll}
+                                  disabled={!windowStatus.isOpen || isFull}
+                                  className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition inline-flex items-center space-x-1 cursor-pointer disabled:opacity-40"
+                                >
+                                  <UserPlus className="w-3.5 h-3.5" />
+                                  <span>Enroll as Retake</span>
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* TAB 2: ATTENDANCE HISTORY LOG */}
       {activeTab === 'history' && (

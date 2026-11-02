@@ -219,6 +219,60 @@
         "timestamp": { "type": "string" }
       },
       "required": ["id", "action", "entity", "details", "timestamp"]
+    },
+    "HardwareDevice": {
+      "title": "HardwareDevice",
+      "description": "Registered IoT RFID reader or fingerprint terminal per classroom.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "deviceId": { "type": "string" },
+        "name": { "type": "string" },
+        "room": { "type": "string" },
+        "building": { "type": "string" },
+        "deviceType": { "type": "string", "enum": ["RFID", "FINGERPRINT", "DUAL"] },
+        "apiKey": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "INACTIVE"] },
+        "lastHeartbeat": { "type": "string" },
+        "registeredAt": { "type": "string" }
+      },
+      "required": ["id", "deviceId", "name", "room", "deviceType", "apiKey", "status"]
+    },
+    "HardwareScanLog": {
+      "title": "HardwareScanLog",
+      "description": "Log of hardware RFID and fingerprint badge scan events.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "deviceId": { "type": "string" },
+        "credentialId": { "type": "string" },
+        "credentialType": { "type": "string", "enum": ["RFID", "FINGERPRINT"] },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "courseOfferingId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "status": { "type": "string" },
+        "reason": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "deviceId", "credentialId", "credentialType", "status", "timestamp"]
+    },
+    "ClassCountAudit": {
+      "title": "ClassCountAudit",
+      "description": "Audit log for teacher adjustments to conducted class counts.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "courseOfferingId": { "type": "string" },
+        "courseCode": { "type": "string" },
+        "changedBy": { "type": "string" },
+        "oldConducted": { "type": "number" },
+        "newConducted": { "type": "number" },
+        "scheduledTotal": { "type": "number" },
+        "reason": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "courseOfferingId", "changedBy", "oldConducted", "newConducted", "reason", "timestamp"]
     }
   },
   "firestore": {
@@ -272,11 +326,23 @@
     },
     "/attendance_corrections/{correctionId}": {
       "schema": { "$ref": "#/entities/AttendanceCorrection" },
-      "description": "Manual attendance corrections by Admin."
+      "description": "Manual attendance corrections by Admin or assigned Teacher."
     },
     "/audit_logs/{auditId}": {
       "schema": { "$ref": "#/entities/AuditLog" },
       "description": "Administrative audit trail."
+    },
+    "/hardware_devices/{deviceId}": {
+      "schema": { "$ref": "#/entities/HardwareDevice" },
+      "description": "Registered RFID readers and fingerprint terminals."
+    },
+    "/hardware_scan_logs/{logId}": {
+      "schema": { "$ref": "#/entities/HardwareScanLog" },
+      "description": "Logs of hardware RFID and biometric scans."
+    },
+    "/class_count_audits/{auditId}": {
+      "schema": { "$ref": "#/entities/ClassCountAudit" },
+      "description": "Audit trail for teacher adjustments to course conducted counts."
     }
   }
 }

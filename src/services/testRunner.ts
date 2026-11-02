@@ -678,6 +678,347 @@ export function runAllAutomatedTests(): {
     String(nonexistentTeacher)
   );
 
+  // 18. Manual Attendance Correction: Status change, isManuallyEdited flag, and Audit Log
+  const initialRecords = db.getAttendanceRecords();
+  const testTargetRecord = initialRecords[0];
+  if (testTargetRecord) {
+    const originalStatus = testTargetRecord.status;
+    const newStatus = originalStatus === 'PRESENT' ? 'LATE' : 'PRESENT';
+    const correctionRes = db.correctAttendance({
+      attendanceRecordId: testTargetRecord.id,
+      newStatus,
+      changedBy: 'Dr. Ahsan Habib',
+      reason: 'Student arrived during review and was present',
+      userRole: 'ADMIN',
+    });
+
+    assert(
+      'Manual Attendance Correction',
+      'Teacher/Admin manual attendance correction updates record and sets isManuallyEdited flag',
+      correctionRes.success === true &&
+      testTargetRecord.isManuallyEdited === true &&
+      testTargetRecord.status === newStatus,
+      'Success: true, isManuallyEdited: true',
+      `Success: ${correctionRes.success}, isManuallyEdited: ${testTargetRecord.isManuallyEdited}`
+    );
+
+    const auditFound = db.getAttendanceCorrections().some(a => a.attendanceId === testTargetRecord.id);
+    assert(
+      'Manual Attendance Correction',
+      'Correction generates a verifiable audit log entry with author and reason',
+      auditFound === true,
+      'Audit log recorded: true',
+      `Audit log recorded: ${auditFound}`
+    );
+
+    // Revert back
+    db.correctAttendance({
+      attendanceRecordId: testTargetRecord.id,
+      newStatus: originalStatus,
+      changedBy: 'Dr. Ahsan Habib',
+      reason: 'Reverting test correction',
+      userRole: 'ADMIN',
+    });
+  }
+
+  // 19. Unauthorized Faculty Attendance Correction Rejection
+  const unauthRes = db.correctAttendance({
+    courseOfferingId: 'offering-cse-401',
+    sessionId: 'sess-cse401-01',
+    studentId: 'stu-01',
+    newStatus: 'PRESENT',
+    changedBy: 'unauthorized_teacher@mbstu.ac.bd',
+    teacherId: 'tch-unauthorized-random',
+    reason: 'Trying to edit without course assignment',
+    userRole: 'TEACHER',
+  });
+  assert(
+    'Manual Attendance Correction',
+    'Faculty not assigned to the course must be denied permission to correct attendance',
+    unauthRes.success === false,
+    'Success: false (Unauthorized)',
+    `Success: ${unauthRes.success} (${unauthRes.message})`
+  );
+
+  // 20. Hardware Attendance: Unknown Credential Rejection
+  const testDevice = db.getHardwareDevices().find(d => d.deviceId === 'DEV-R304-RFID');
+  const validDevKey = testDevice?.apiKey || 'mbstu-r304-key-2026';
+
+  const unknownScanRes = db.processHardwareScan({
+    deviceId: 'DEV-R304-RFID',
+    credentialId: 'UNKNOWN-RFID-HEX-FFFF',
+    credentialType: 'RFID',
+    timestamp: new Date().toISOString(),
+    apiKey: validDevKey,
+  });
+  assert(
+    'Hardware Attendance Module',
+    'Unknown RFID card or fingerprint template must be rejected with UNKNOWN_CREDENTIAL',
+    unknownScanRes.status === 'UNKNOWN_CREDENTIAL' && unknownScanRes.success === false,
+    'Status: UNKNOWN_CREDENTIAL',
+    `Status: ${unknownScanRes.status}`
+  );
+
+  // 21. Hardware Attendance: Device Security Token Validation
+  const unauthorizedDeviceScan = db.processHardwareScan({
+    deviceId: 'DEV-R304-RFID',
+    credentialId: 'RFID-CS-2023-0101',
+    credentialType: 'RFID',
+    timestamp: new Date().toISOString(),
+    apiKey: 'WRONG_UNAUTHORIZED_TOKEN',
+  });
+  assert(
+    'Hardware Attendance Module',
+    'Device scan with invalid API key must be blocked with UNAUTHORIZED status',
+    unauthorizedDeviceScan.status === 'UNAUTHORIZED' && unauthorizedDeviceScan.success === false,
+    'Status: UNAUTHORIZED',
+    `Status: ${unauthorizedDeviceScan.status}`
+  );
+
+  // 22. Hardware Attendance: Biometric Student Link & Source Tagging
+  const testStudent = db.getStudents()[0];
+  const testOffering = db.getCourseOfferings().find(
+    o => o.departmentId === testStudent?.departmentId && o.year === testStudent?.year && o.semester === testStudent?.semester
+  ) || db.getCourseOfferings()[0];
+
+  if (testStudent && testOffering) {
+    db.linkStudentBiometrics({
+      studentId: testStudent.id,
+      rfidCardUid: 'RFID-UNITTEST-CARD-001',
+      fingerprintTemplateId: 'FP-TMPL-UNITTEST-001',
+    });
+
+    // Ensure student is actively enrolled
+    db.adminOverrideEnrollment({
+      studentId: testStudent.id,
+      courseOfferingId: testOffering.id,
+      action: 'FORCE_ENROLL',
+      adminName: 'Admin',
+      reason: 'Hardware test setup',
+    });
+
+    // Create an active test session for this offering
+    const activeTestSession = db.startAttendanceSession({
+      courseOfferingId: testOffering.id,
+      teacherId: 'tch-01',
+      attendanceMethod: 'QR',
+      notes: 'Active session for hardware scan testing',
+    });
+
+    // First scan -> SUCCESS
+    const scan1 = db.processHardwareScan({
+      deviceId: 'DEV-R304-RFID',
+      credentialId: 'RFID-UNITTEST-CARD-001',
+      credentialType: 'RFID',
+      timestamp: new Date().toISOString(),
+      apiKey: validDevKey,
+    });
+
+    assert(
+      'Hardware Attendance Module',
+      'Valid RFID scan must record attendance with source "rfid"',
+      scan1.success === true && scan1.record?.source === 'rfid',
+      'Success: true, source: rfid',
+      `Success: ${scan1.success}, source: ${scan1.record?.source}`
+    );
+
+    // 23. Hardware Attendance: Duplicate Scan Prevention
+    const duplicateScan = db.processHardwareScan({
+      deviceId: 'DEV-R304-RFID',
+      credentialId: 'RFID-UNITTEST-CARD-001',
+      credentialType: 'RFID',
+      timestamp: new Date().toISOString(),
+      apiKey: validDevKey,
+    });
+
+    assert(
+      'Hardware Attendance Module',
+      'Subsequent tap of same card in same session must be blocked as DUPLICATE',
+      duplicateScan.status === 'DUPLICATE' && duplicateScan.success === false,
+      'Status: DUPLICATE',
+      `Status: ${duplicateScan.status}`
+    );
+
+    // Clean up test session
+    db.closeAttendanceSession(activeTestSession.id);
+  }
+
+  // 24. Teacher-Managed Class Count: Adjustment & Validation
+  const sampleOffering = db.getCourseOfferings()[0];
+  if (sampleOffering) {
+    const scheduled = sampleOffering.plannedClasses || 35;
+    const initialConducted = sampleOffering.conductedClasses || 10;
+
+    // Over-scheduled rejection
+    const overScheduledRes = db.adjustConductedClasses({
+      courseOfferingId: sampleOffering.id,
+      newConductedCount: scheduled + 5,
+      changedBy: 'Faculty Teacher',
+      reason: 'Invalid count exceeding scheduled',
+      userRole: 'ADMIN',
+    });
+    assert(
+      'Class Count Management',
+      'Conducted classes count cannot exceed total scheduled classes',
+      overScheduledRes.success === false,
+      'Success: false (Exceeds scheduled)',
+      `Success: ${overScheduledRes.success}`
+    );
+
+    // Negative count rejection
+    const negativeRes = db.adjustConductedClasses({
+      courseOfferingId: sampleOffering.id,
+      newConductedCount: -2,
+      changedBy: 'Faculty Teacher',
+      reason: 'Negative count test',
+      userRole: 'ADMIN',
+    });
+    assert(
+      'Class Count Management',
+      'Conducted classes count cannot be negative',
+      negativeRes.success === false,
+      'Success: false (Negative)',
+      `Success: ${negativeRes.success}`
+    );
+
+    // Valid adjustment
+    const validAdjustRes = db.adjustConductedClasses({
+      courseOfferingId: sampleOffering.id,
+      newConductedCount: 15,
+      changedBy: 'Dr. Ahsan Habib',
+      reason: 'Official lecture tally verification after midterm review',
+      userRole: 'ADMIN',
+    });
+    assert(
+      'Class Count Management',
+      'Valid conducted count adjustment persists and logs to ClassCountAudit',
+      validAdjustRes.success === true && sampleOffering.conductedClasses === 15,
+      'Conducted: 15',
+      `Conducted: ${sampleOffering.conductedClasses}`
+    );
+
+    // Attendance percentage calculation uses Conducted Classes (not scheduled)
+    const recalculatedAnalytics = computeStudentCourseAnalytics({
+      studentId: 'stu-test-calc',
+      studentName: 'Calc Student',
+      studentRoll: 'ROLL-CALC',
+      courseOffering: sampleOffering,
+      courseCode: 'CSE-101',
+      courseName: 'Test Calc',
+      credit: 3,
+      courseType: 'THEORY',
+      records: [
+        { id: 'r1', sessionId: 's1', courseOfferingId: sampleOffering.id, studentId: 'stu-test-calc', timestamp: '', method: 'QR', status: 'PRESENT', minutesLate: 0 },
+        { id: 'r2', sessionId: 's2', courseOfferingId: sampleOffering.id, studentId: 'stu-test-calc', timestamp: '', method: 'QR', status: 'PRESENT', minutesLate: 0 },
+        { id: 'r3', sessionId: 's3', courseOfferingId: sampleOffering.id, studentId: 'stu-test-calc', timestamp: '', method: 'QR', status: 'PRESENT', minutesLate: 0 },
+      ],
+    });
+    // 3 attended / 15 conducted * 100 = 20.0% (If it used scheduled 35, it would be 8.5%)
+    assert(
+      'Class Count Management',
+      'Attendance percentage strictly uses Conducted Classes (3 / 15 = 20.0%)',
+      recalculatedAnalytics.attendancePercentage === 20.0,
+      'Attendance %: 20.0%',
+      `Attendance %: ${recalculatedAnalytics.attendancePercentage}%`
+    );
+
+    // Restore initial conducted count
+    db.adjustConductedClasses({
+      courseOfferingId: sampleOffering.id,
+      newConductedCount: initialConducted,
+      changedBy: 'Admin',
+      reason: 'Reverting test adjustment',
+      userRole: 'ADMIN',
+    });
+  }
+
+  // 25. Self-Enrollment: Closed Window Rejection
+  const windowObj = db.getActiveEnrollmentWindow();
+  if (windowObj) {
+    db.updateEnrollmentWindow(windowObj.id, { isOpen: false });
+    const closedWindowEnrollRes = db.enrollStudentSelf({
+      studentId: 'stu-01',
+      courseOfferingId: 'offering-cse-101',
+    });
+    assert(
+      'Student Self-Enrollment',
+      'Self-enrollment must be blocked when academic registration window is closed',
+      closedWindowEnrollRes.success === false,
+      'Success: false (Window closed)',
+      `Success: ${closedWindowEnrollRes.success} (${closedWindowEnrollRes.message})`
+    );
+
+    // Re-open window
+    db.updateEnrollmentWindow(windowObj.id, { isOpen: true });
+  }
+
+  // 26. Self-Enrollment: Program Isolation
+  const cseStudent = db.getStudents().find(s => s.departmentId === 'dept-cse');
+  const eeeOffering = db.getCourseOfferings().find(o => o.departmentId === 'dept-eee');
+  if (cseStudent && eeeOffering) {
+    const crossDeptEnrollRes = db.enrollStudentSelf({
+      studentId: cseStudent.id,
+      courseOfferingId: eeeOffering.id,
+    });
+    assert(
+      'Student Self-Enrollment',
+      'Students cannot self-enroll in courses of another department or academic program',
+      crossDeptEnrollRes.success === false,
+      'Success: false (Department Mismatch)',
+      `Success: ${crossDeptEnrollRes.success}`
+    );
+  }
+
+  // 27. Self-Enrollment: Drop Course Preserves Prior Attendance History
+  const sampleStudent = db.getStudents()[0];
+  const dropTestOffering = db.getCourseOfferings()[0];
+  if (sampleStudent && dropTestOffering) {
+    // Ensure student is actively enrolled
+    db.adminOverrideEnrollment({
+      studentId: sampleStudent.id,
+      courseOfferingId: dropTestOffering.id,
+      action: 'FORCE_ENROLL',
+      adminName: 'Admin',
+      reason: 'Setup test enrollment',
+    });
+
+    // Create an attendance record
+    const attendanceRecordId = 'rec-preserve-test-' + Date.now();
+    const testRecord: AttendanceRecord = {
+      id: attendanceRecordId,
+      sessionId: 'sess-preserve-test',
+      courseOfferingId: dropTestOffering.id,
+      studentId: sampleStudent.id,
+      timestamp: new Date().toISOString(),
+      method: 'MANUAL',
+      status: 'PRESENT',
+      minutesLate: 0,
+    };
+    db.getState().attendanceRecords.push(testRecord);
+
+    // Student drops course
+    const dropRes = db.dropStudentCourse({
+      studentId: sampleStudent.id,
+      courseOfferingId: dropTestOffering.id,
+      reason: 'Course load adjustment',
+    });
+
+    // Check enrollment status is DROPPED
+    const enrollment = db.getStudentEnrollments().find(
+      e => e.studentId === sampleStudent.id && e.courseOfferingId === dropTestOffering.id
+    );
+
+    // Check attendance record still exists in system
+    const recordPreserved = db.getAttendanceRecords().some(r => r.id === attendanceRecordId);
+
+    assert(
+      'Student Self-Enrollment',
+      'Dropping a course marks enrollment as DROPPED and strictly preserves past attendance history',
+      dropRes.success === true && enrollment?.status === 'DROPPED' && recordPreserved === true,
+      'Status: DROPPED, Record Preserved: true',
+      `Status: ${enrollment?.status}, Record Preserved: ${recordPreserved}`
+    );
+  }
   const passedCount = results.filter(r => r.passed).length;
   const failedCount = results.filter(r => !r.passed).length;
 

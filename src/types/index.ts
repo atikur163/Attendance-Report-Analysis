@@ -49,6 +49,8 @@ export interface Course {
   year: number; // 1, 2, 3, 4
   semester: number; // 1, 2
   status: 'ACTIVE' | 'INACTIVE';
+  prerequisiteCourseIds?: string[];
+  assignedTeacherIds?: string[];
 }
 
 export interface CourseOffering {
@@ -62,6 +64,7 @@ export interface CourseOffering {
   section: string; // e.g. "A"
   plannedClasses: number; // e.g. 35
   conductedClasses: number;
+  capacity?: number;
   status: 'ACTIVE' | 'COMPLETED';
 }
 
@@ -121,12 +124,30 @@ export interface Student {
   authUid?: string;
 }
 
+export interface EnrollmentWindow {
+  id: string;
+  academicSessionId: string;
+  termName: string; // e.g. "2025-2026 Academic Term"
+  startDate: string; // ISO date string e.g. "2026-09-01"
+  endDate: string; // ISO date string e.g. "2026-11-30"
+  isOpen: boolean;
+  allowRetake: boolean;
+  maxCreditsPerSemester: number; // e.g. 25
+  requireRetakeApproval: boolean;
+}
+
 export interface StudentEnrollment {
   id: string;
   studentId: string;
   courseOfferingId: string;
   enrolledAt: string;
   status: 'ENROLLED' | 'DROPPED';
+  enrollmentType?: 'REGULAR' | 'RETAKE';
+  retakeStatus?: 'APPROVED' | 'PENDING' | 'REJECTED';
+  droppedAt?: string;
+  dropReason?: string;
+  enrolledBy?: 'STUDENT' | 'ADMIN';
+  term?: string;
 }
 
 export interface RoutineEntry {

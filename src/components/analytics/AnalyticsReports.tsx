@@ -416,8 +416,8 @@ export const AnalyticsReports: React.FC<AnalyticsReportsProps> = ({ onRefresh })
               <tr>
                 <th className="py-3 px-4">Student</th>
                 <th className="py-3 px-4">Course</th>
-                <th className="py-3 px-4">Lectures Held</th>
-                <th className="py-3 px-4">Classes Attended</th>
+                <th className="py-3 px-4">Conducted / Scheduled</th>
+                <th className="py-3 px-4">Attended Classes</th>
                 <th className="py-3 px-4">Current %</th>
                 <th className="py-3 px-4">Remaining</th>
                 <th className="py-3 px-4">Needed for 60%</th>
@@ -427,6 +427,10 @@ export const AnalyticsReports: React.FC<AnalyticsReportsProps> = ({ onRefresh })
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredAnalytics.map((item, idx) => {
+                const hasEditedRecords = records.some(
+                  r => r.studentId === item.studentId && r.courseOfferingId === item.courseOfferingId && r.isManuallyEdited
+                );
+
                 return (
                   <tr key={idx} className="hover:bg-slate-50 transition-colors">
                     <td className="py-3 px-4">
@@ -439,7 +443,7 @@ export const AnalyticsReports: React.FC<AnalyticsReportsProps> = ({ onRefresh })
                     </td>
                     <td className="py-3 px-4">
                       <div className="font-semibold text-slate-800">
-                        {item.conductedClasses} / {item.plannedClasses}
+                        <strong className="text-indigo-700 font-mono">{item.conductedClasses}</strong> / {item.plannedClasses} held
                       </div>
                       <div className="flex items-center space-x-1 mt-0.5">
                         <span className="text-[10px] font-mono text-slate-500">{item.courseProgressPercentage}%</span>
@@ -451,7 +455,17 @@ export const AnalyticsReports: React.FC<AnalyticsReportsProps> = ({ onRefresh })
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      <div className="font-extrabold text-slate-900">{item.effectivePresentCount}</div>
+                      <div className="flex items-center space-x-1.5">
+                        <span className="font-extrabold text-slate-900 text-sm font-mono">{item.effectivePresentCount}</span>
+                        {hasEditedRecords && (
+                          <span
+                            className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-300"
+                            title="Contains attendance records corrected manually by faculty or admin"
+                          >
+                            Edited
+                          </span>
+                        )}
+                      </div>
                       <div className="text-[10px] text-slate-400">
                         {item.presentCount}P • {item.lateCount}L • {item.absentCount}A
                         {item.penaltyCount > 0 && ` (-${item.penaltyCount} pen)`}
