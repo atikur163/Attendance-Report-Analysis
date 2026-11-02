@@ -19,6 +19,8 @@ import {
   User as FirebaseUser,
 } from 'firebase/auth';
 import {
+  initializeFirestore,
+  setLogLevel,
   getFirestore,
   doc,
   getDocFromServer,
@@ -26,10 +28,22 @@ import {
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
+// Suppress Firestore SDK internal verbose stream lifecycle warnings in console
+setLogLevel('silent');
+
 const app = initializeApp(firebaseConfig);
 
-// CRITICAL: The app will break without specifying firestoreDatabaseId
-export const firestoreDb: Firestore = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+// CRITICAL: Initialize Firestore with experimentalForceLongPolling and databaseId.
+// ForceLongPolling closes each HTTP request immediately after receiving data instead of keeping
+// persistent idle HTTP/2 streams open, completely eliminating 'Disconnecting idle stream' timeouts
+// behind Cloud Run, container proxies, and web workers.
+export const firestoreDb: Firestore = initializeFirestore(
+  app,
+  {
+    experimentalForceLongPolling: true,
+  },
+  firebaseConfig.firestoreDatabaseId
+);
 export const auth = getAuth(app);
 
 export const googleProvider = new GoogleAuthProvider();

@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import {
   GraduationCap,
-  Shield,
-  UserCheck,
   Mail,
   Lock,
   Eye,
@@ -10,7 +8,6 @@ import {
   AlertCircle,
   CheckCircle2,
   ArrowRight,
-  Sparkles,
   KeyRound,
   X,
 } from 'lucide-react';
@@ -52,12 +49,6 @@ export const LoginPage: React.FC = () => {
     setIsSubmitting(true);
     await loginWithEmail(email, password);
     setIsSubmitting(false);
-  };
-
-  const handleQuickFill = (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    setAuthError(null);
   };
 
   const handleSendResetEmail = async (e: React.FormEvent) => {
@@ -105,10 +96,6 @@ export const LoginPage: React.FC = () => {
         <p className="mt-2 text-xs sm:text-sm text-slate-400">
           Mawlana Bhashani Science & Technology University
         </p>
-        <div className="mt-2 inline-flex items-center space-x-1 px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 text-[11px] text-slate-300">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span>Cloud Firestore & Zero-Trust RBAC Active</span>
-        </div>
       </div>
 
       {/* Main Login Card */}
@@ -254,85 +241,11 @@ export const LoginPage: React.FC = () => {
               </button>
             </div>
           </div>
-
-          {/* Quick-Fill Demo Logins for Fast Review */}
-          <div className="pt-2 border-t border-slate-700/60">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center space-x-1">
-                <Sparkles className="w-3 h-3 text-indigo-400" />
-                <span>Sandbox Evaluator Role Preview</span>
-              </span>
-              <span className="text-[10px] text-amber-400 font-mono">Sample Profiles</span>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickFill('sabbirstudy2002@gmail.com', '')}
-                className="p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20 hover:bg-indigo-500/20 text-indigo-300 text-left transition-colors"
-                title="Fill authorized University Administrator email"
-              >
-                <div className="flex items-center space-x-1 font-bold text-[11px]">
-                  <Shield className="w-3 h-3 text-indigo-400" />
-                  <span>Admin Login</span>
-                </div>
-                <div className="text-[9px] text-slate-400 truncate mt-0.5">sabbirstudy2002</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickFill('nargisakter@mbstu.ac.bd', 'Teacher@1234')}
-                className="p-2 rounded-xl bg-pink-500/10 border border-pink-500/20 hover:bg-pink-500/20 text-pink-300 text-left transition-colors"
-              >
-                <div className="flex items-center space-x-1 font-bold text-[11px]">
-                  <UserCheck className="w-3 h-3 text-pink-400" />
-                  <span>Prof. Nargis</span>
-                </div>
-                <div className="text-[9px] text-slate-400 truncate mt-0.5">TCH-103 Faculty</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickFill('ahsan.habib@mbstu.ac.bd', 'Teacher@1234')}
-                className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 text-emerald-300 text-left transition-colors"
-              >
-                <div className="flex items-center space-x-1 font-bold text-[11px]">
-                  <UserCheck className="w-3 h-3 text-emerald-400" />
-                  <span>Dr. Ahsan</span>
-                </div>
-                <div className="text-[9px] text-slate-400 truncate mt-0.5">TCH-101 Faculty</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickFill('farhana.y@mbstu.ac.bd', 'Student@1234')}
-                className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 hover:bg-cyan-500/20 text-cyan-300 text-left transition-colors"
-              >
-                <div className="flex items-center space-x-1 font-bold text-[11px]">
-                  <GraduationCap className="w-3 h-3 text-cyan-400" />
-                  <span>Farhana</span>
-                </div>
-                <div className="text-[9px] text-slate-400 truncate mt-0.5">CSE-26002 (stu-02)</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickFill('it24026.student@mbstu.ac.bd', 'Student@1234')}
-                className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 hover:bg-purple-500/20 text-purple-300 text-left transition-colors"
-              >
-                <div className="flex items-center space-x-1 font-bold text-[11px]">
-                  <GraduationCap className="w-3 h-3 text-purple-400" />
-                  <span>Tanvir</span>
-                </div>
-                <div className="text-[9px] text-slate-400 truncate mt-0.5">IT-24026 (stu-01)</div>
-              </button>
-            </div>
-          </div>
         </div>
 
         {/* Security Disclaimers */}
         <p className="mt-4 text-center text-[11px] text-slate-500">
-          Roles are authenticated and verified directly against encrypted Cloud Firestore user records.
+          Official Attendance Management & Analytics Portal &bull; MBSTU
         </p>
       </div>
 

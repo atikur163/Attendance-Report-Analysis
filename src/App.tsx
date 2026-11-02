@@ -293,29 +293,12 @@ function AppContent() {
       <footer className="bg-white border-t border-slate-200 py-4 px-6 text-xs text-slate-500">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
           <div className="flex items-center space-x-2">
-            <span className="font-bold text-slate-700">UniAttend System v2.5</span>
+            <span className="font-bold text-slate-700">UniAttend System</span>
             <span>•</span>
-            <span className="text-emerald-700 font-semibold flex items-center space-x-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Cloud Firestore & Zero-Trust RBAC Connected</span>
-            </span>
-            <span>•</span>
-            <span>MBSTU Department of CSE</span>
+            <span>Mawlana Bhashani Science and Technology University</span>
           </div>
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={() => setIsTestsModalOpen(true)}
-              className="text-emerald-700 hover:underline font-semibold flex items-center space-x-1"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              <span>24/24 Rule Tests Passing</span>
-            </button>
-            <button
-              onClick={() => setIsPythonDocsModalOpen(true)}
-              className="text-indigo-600 hover:underline font-semibold"
-            >
-              Architecture & Security
-            </button>
+          <div className="flex items-center space-x-4 text-slate-500">
+            <span>Official University Attendance & Analytics Portal</span>
           </div>
         </div>
       </footer>

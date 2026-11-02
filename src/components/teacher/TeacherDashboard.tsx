@@ -507,7 +507,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           title="Start Dynamic QR or Face Recognition Kiosk"
                         >
                           <Play className="w-3 h-3 fill-current" />
-                          <span>Start Kiosk</span>
+                          <span>Kiosk</span>
                         </button>
                         <button
                           onClick={() => {

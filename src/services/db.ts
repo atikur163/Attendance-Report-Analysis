@@ -915,6 +915,9 @@ class DatabaseService {
   }
 
   private attachRoleRealtimeListeners(isAdmin: boolean, isTeacher: boolean, studentId: string): void {
+    // Clean up any lingering previous listeners to avoid idle stream leak
+    this.cleanupListeners();
+
     // 1. Attendance sessions real-time listener (all authenticated users can read to participate)
     try {
       const unsubSessions = onSnapshot(

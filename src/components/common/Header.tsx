@@ -5,8 +5,6 @@ import {
   UserCheck,
   Smartphone,
   Monitor,
-  CheckCircle2,
-  FileCode2,
   RefreshCw,
   LogIn,
   LogOut,
@@ -20,8 +18,8 @@ interface HeaderProps {
   onRoleChange: (role: UserRole) => void;
   isMobileFrame: boolean;
   onToggleMobileFrame: () => void;
-  onOpenTests: () => void;
-  onOpenPythonDocs: () => void;
+  onOpenTests?: () => void;
+  onOpenPythonDocs?: () => void;
   onResetSeed: () => void;
   unreadEmailCount: number;
 }
@@ -31,8 +29,6 @@ export const Header: React.FC<HeaderProps> = ({
   onRoleChange,
   isMobileFrame,
   onToggleMobileFrame,
-  onOpenTests,
-  onOpenPythonDocs,
   onResetSeed,
 }) => {
   const { currentUser, userProfile, loginWithGoogle, logout } = useAuth();
@@ -51,10 +47,6 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 bg-clip-text text-transparent">
                   UniAttend
                 </span>
-                <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mr-1" />
-                  Firestore Live
-                </span>
               </div>
               <p className="text-[11px] text-slate-500 hidden md:block">
                 University Attendance Management & Analytics Platform
@@ -64,25 +56,6 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Action Center & Role Switcher */}
           <div className="flex items-center space-x-2 sm:space-x-3">
-            {/* Automated Business Rules Test Suite */}
-            <button
-              onClick={onOpenTests}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
-              title="Run automated validation tests for all attendance rules"
-            >
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span className="hidden sm:inline">Rule Tests</span>
-            </button>
-
-            {/* Architecture Specs */}
-            <button
-              onClick={onOpenPythonDocs}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors"
-              title="Explore Cloud Firestore schema and backend architecture"
-            >
-              <FileCode2 className="w-4 h-4 text-amber-700" />
-              <span className="hidden md:inline">Backend & Docs</span>
-            </button>
 
             {/* Mobile / Desktop View Mode Toggle */}
             <button
