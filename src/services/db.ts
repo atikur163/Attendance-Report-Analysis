@@ -584,8 +584,22 @@ class DatabaseService {
   private state: SystemDatabaseState;
   private isConnectedToFirestore = false;
   private syncing = false;
+  private isTestMode = false;
   private listeners: (() => void)[] = [];
   private unsubscribeCallbacks: (() => void)[] = [];
+
+  public setTestMode(enabled: boolean): void {
+    this.isTestMode = enabled;
+  }
+
+  public getTestMode(): boolean {
+    return this.isTestMode;
+  }
+
+  public restoreState(savedState: SystemDatabaseState): void {
+    this.state = savedState;
+    this.notifyListeners();
+  }
 
   constructor() {
     // Initialize strictly with local backup/seed data. Never fire unauthenticated Firestore queries on startup.
@@ -791,6 +805,9 @@ class DatabaseService {
    * completely preventing "Unsupported field value: undefined" errors.
    */
   public async safeSetDoc(docRef: any, data: any, options?: any): Promise<void> {
+    if (this.isTestMode) {
+      return;
+    }
     if (!docRef) {
       console.warn('safeSetDoc called without a valid DocumentReference; skipping Firestore write.');
       return;
@@ -1148,8 +1165,8 @@ class DatabaseService {
     this.state.teachers.push(newTeacher);
     this.saveLocalBackup();
 
-    if (auth.currentUser) {
-      setDoc(doc(firestoreDb, 'teachers', newTeacher.id), sanitizeForFirestore(newTeacher)).catch(err => {
+    if (auth.currentUser && !this.isTestMode) {
+      this.safeSetDoc(doc(firestoreDb, 'teachers', newTeacher.id), newTeacher).catch(err => {
         handleFirestoreError(err, OperationType.CREATE, `teachers/${newTeacher.id}`);
       });
     }
@@ -1165,8 +1182,8 @@ class DatabaseService {
     const updated = this.state.teachers[idx];
     this.saveLocalBackup();
 
-    if (auth.currentUser) {
-      setDoc(doc(firestoreDb, 'teachers', teacherId), sanitizeForFirestore(updated), { merge: true }).catch(err => {
+    if (auth.currentUser && !this.isTestMode) {
+      this.safeSetDoc(doc(firestoreDb, 'teachers', teacherId), updated, { merge: true }).catch(err => {
         handleFirestoreError(err, OperationType.UPDATE, `teachers/${teacherId}`);
       });
     }
@@ -1182,7 +1199,7 @@ class DatabaseService {
     this.state.teacherAssignments = this.state.teacherAssignments.filter(ta => ta.teacherId !== teacherId);
     this.saveLocalBackup();
 
-    if (auth.currentUser) {
+    if (auth.currentUser && !this.isTestMode) {
       deleteDoc(doc(firestoreDb, 'teachers', teacherId)).catch(err => {
         handleFirestoreError(err, OperationType.DELETE, `teachers/${teacherId}`);
       });
@@ -1353,8 +1370,8 @@ class DatabaseService {
     const updated = this.state.students[idx];
     this.saveLocalBackup();
 
-    if (auth.currentUser) {
-      setDoc(doc(firestoreDb, 'students', studentId), sanitizeForFirestore(updated), { merge: true }).catch(err => {
+    if (auth.currentUser && !this.isTestMode) {
+      this.safeSetDoc(doc(firestoreDb, 'students', studentId), updated, { merge: true }).catch(err => {
         handleFirestoreError(err, OperationType.UPDATE, `students/${studentId}`);
       });
     }
@@ -1370,7 +1387,7 @@ class DatabaseService {
     this.state.studentEnrollments = this.state.studentEnrollments.filter(e => e.studentId !== studentId);
     this.saveLocalBackup();
 
-    if (auth.currentUser) {
+    if (auth.currentUser && !this.isTestMode) {
       deleteDoc(doc(firestoreDb, 'students', studentId)).catch(err => {
         handleFirestoreError(err, OperationType.DELETE, `students/${studentId}`);
       });

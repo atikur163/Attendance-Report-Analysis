@@ -273,9 +273,30 @@
         "timestamp": { "type": "string" }
       },
       "required": ["id", "courseOfferingId", "changedBy", "oldConducted", "newConducted", "reason", "timestamp"]
+    },
+    "EnrollmentWindow": {
+      "title": "EnrollmentWindow",
+      "description": "Semester course enrollment and self-registration window.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "academicSessionId": { "type": "string" },
+        "termName": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "isOpen": { "type": "boolean" },
+        "allowRetake": { "type": "boolean" },
+        "maxCreditsPerSemester": { "type": "number" },
+        "requireRetakeApproval": { "type": "boolean" }
+      },
+      "required": ["id", "academicSessionId", "termName", "startDate", "endDate", "isOpen"]
     }
   },
   "firestore": {
+    "/enrollment_windows/{windowId}": {
+      "schema": { "$ref": "#/entities/EnrollmentWindow" },
+      "description": "Academic course enrollment windows."
+    },
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/User" },
       "description": "User account documents containing user roles."

@@ -27,7 +27,11 @@ export function runAllAutomatedTests(): {
   failed: number;
   results: TestResult[];
 } {
-  const results: TestResult[] = [];
+  db.setTestMode(true);
+  const stateSnapshot = JSON.parse(JSON.stringify(db.getState()));
+
+  try {
+    const results: TestResult[] = [];
 
   function assert(category: string, name: string, condition: boolean, expected: string, actual: string) {
     results.push({
@@ -1019,13 +1023,17 @@ export function runAllAutomatedTests(): {
       `Status: ${enrollment?.status}, Record Preserved: ${recordPreserved}`
     );
   }
-  const passedCount = results.filter(r => r.passed).length;
-  const failedCount = results.filter(r => !r.passed).length;
+    const passedCount = results.filter(r => r.passed).length;
+    const failedCount = results.filter(r => !r.passed).length;
 
-  return {
-    total: results.length,
-    passed: passedCount,
-    failed: failedCount,
-    results,
-  };
+    return {
+      total: results.length,
+      passed: passedCount,
+      failed: failedCount,
+      results,
+    };
+  } finally {
+    db.restoreState(stateSnapshot);
+    db.setTestMode(false);
+  }
 }

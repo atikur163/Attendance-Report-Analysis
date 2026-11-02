@@ -84,7 +84,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const userSnap = await getDoc(userDocRef);
 
     // Bootstrap administrator check
-    if (cleanEmail === 'it24026@mbstu.ac.bd' || cleanEmail === 'sabbirstudy2002@gmail.com') {
+    if (cleanEmail === 'rtrv572@gmail.com' || cleanEmail === 'it24026@mbstu.ac.bd' || cleanEmail === 'sabbirstudy2002@gmail.com') {
       const adminProfile: UserProfile = {
         uid: user.uid,
         email: user.email || cleanEmail,
@@ -131,10 +131,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             teacherId: matched.id,
             status: 'ACTIVE',
           };
-          if (!matched.authUid || matched.authUid !== user.uid) {
-            db.updateTeacher(matched.id, { authUid: user.uid });
-          }
           await setDoc(userDocRef, sanitizeForFirestore(updatedProfile), { merge: true });
+          if (!matched.authUid || matched.authUid !== user.uid) {
+            matched.authUid = user.uid;
+            db.saveLocalBackup();
+          }
           return updatedProfile;
         }
       }
@@ -160,10 +161,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             studentId: matched.id,
             status: 'ACTIVE',
           };
-          if (!matched.authUid || matched.authUid !== user.uid) {
-            db.updateStudent(matched.id, { authUid: user.uid });
-          }
           await setDoc(userDocRef, sanitizeForFirestore(updatedProfile), { merge: true });
+          if (!matched.authUid || matched.authUid !== user.uid) {
+            matched.authUid = user.uid;
+            db.saveLocalBackup();
+          }
           return updatedProfile;
         }
       }
@@ -188,8 +190,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         status: 'ACTIVE',
         createdAt: new Date().toISOString(),
       };
-      db.updateTeacher(matchedTeacher.id, { authUid: user.uid });
       await setDoc(userDocRef, sanitizeForFirestore(teacherProfile), { merge: true });
+      matchedTeacher.authUid = user.uid;
+      db.saveLocalBackup();
       return teacherProfile;
     }
 
@@ -243,8 +246,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         status: 'ACTIVE',
         createdAt: new Date().toISOString(),
       };
-      db.updateStudent(matchedStudent.id, { authUid: user.uid });
       await setDoc(userDocRef, sanitizeForFirestore(studentProfile), { merge: true });
+      matchedStudent.authUid = user.uid;
+      db.saveLocalBackup();
       return studentProfile;
     }
 

@@ -13,7 +13,13 @@ export const AutomatedTestsModal: React.FC<AutomatedTestsModalProps> = ({ isOpen
     passed: number;
     failed: number;
     results: TestResult[];
-  } | null>(() => runAllAutomatedTests());
+  } | null>(null);
+
+  React.useEffect(() => {
+    if (isOpen && !suiteResult) {
+      setSuiteResult(runAllAutomatedTests());
+    }
+  }, [isOpen, suiteResult]);
 
   if (!isOpen) return null;
 

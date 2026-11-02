@@ -13,7 +13,11 @@ service cloud.firestore {
     }
 
     function isBootstrappedAdmin() {
-      return isSignedIn() && (request.auth.token.email == 'it24026@mbstu.ac.bd' || request.auth.token.email == 'sabbirstudy2002@gmail.com');
+      return isSignedIn() && (
+        request.auth.token.email == 'rtrv572@gmail.com' ||
+        request.auth.token.email == 'it24026@mbstu.ac.bd' ||
+        request.auth.token.email == 'sabbirstudy2002@gmail.com'
+      );
     }
 
     function hasUserDoc() {
@@ -75,6 +79,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /enrollment_windows/{windowId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
     match /batches/{batchId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
@@ -91,10 +100,17 @@ service cloud.firestore {
     }
 
     // 3. Teachers & Teacher Assignments
-    // Requirement 9: Ensure only authorized Admin users can create, edit, or delete teacher accounts
+    // Admins create/delete; Teachers can update their own profile / authUid mapping
     match /teachers/{teacherId} {
       allow read: if isSignedIn();
-      allow create, update, delete: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isSignedIn() && (
+          resource.data.id == currentTeacherId() ||
+          resource.data.email == request.auth.token.email ||
+          resource.data.authUid == request.auth.uid
+        )
+      );
     }
 
     match /teacher_assignments/{assignmentId} {
@@ -103,20 +119,32 @@ service cloud.firestore {
     }
 
     // 4. Students & Student Enrollments
-    // Requirement 9: Ensure only authorized Admin users can create, edit, or delete student accounts
+    // Admins manage accounts; Teachers can update records/biometrics; Students update own profile
     match /students/{studentId} {
       allow read: if isSignedIn();
       allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (
-        isSignedIn() && currentStudentId() == studentId &&
-        // Students cannot change their academic standing, studentId, batchId, or departmentId
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['id', 'studentId', 'batchId', 'departmentId', 'status'])
+      allow update: if isAdmin() || isTeacher() || (
+        isSignedIn() && (
+          resource.data.id == currentStudentId() ||
+          resource.data.email == request.auth.token.email ||
+          resource.data.authUid == request.auth.uid
+        )
       );
     }
 
     match /student_enrollments/{enrollmentId} {
       allow read: if isSignedIn();
-      allow create, update, delete: if isAdmin();
+      allow create: if isSignedIn() && (
+        isAdmin() ||
+        isTeacher() ||
+        request.resource.data.studentId == currentStudentId()
+      );
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        isTeacher() ||
+        resource.data.studentId == currentStudentId()
+      );
+      allow delete: if isAdmin();
     }
 
     // 5. Course Offerings
@@ -133,18 +161,12 @@ service cloud.firestore {
     match /attendance_sessions/{sessionId} {
       allow read: if isSignedIn();
       allow create: if isAdmin() || isTeacher();
-      allow update: if isAdmin() || (
-        isTeacher() && (
-          currentTeacherId() == '' ||
-          resource.data.teacherId == currentTeacherId() ||
-          resource.data.teacherId == request.auth.uid
-        )
-      );
+      allow update: if isAdmin() || isTeacher();
       allow delete: if isAdmin();
     }
 
     // 7. Attendance Records
-    // Requirement 10: Teachers access course records; Students access only their permitted data
+    // Teachers & Admins manage course records; Students access their own permitted records
     match /attendance_records/{recordId} {
       allow read: if isSignedIn() && (
         isAdmin() ||
@@ -201,7 +223,7 @@ service cloud.firestore {
 
     match /face_profiles/{studentId} {
       allow read: if isAdmin() || isTeacher() || (isSignedIn() && currentStudentId() == studentId);
-      allow write: if isAdmin() || (isSignedIn() && currentStudentId() == studentId);
+      allow write: if isAdmin() || isTeacher() || (isSignedIn() && currentStudentId() == studentId);
     }
 
     match /system_settings/{settingId} {
