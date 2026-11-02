@@ -14,6 +14,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { db } from '../../services/db';
+import { ApiClient } from '../../services/apiClient';
 import { NotificationService } from '../../services/notificationService';
 import { computeStudentCourseAnalytics } from '../../services/attendanceEngine';
 import { EmailLog, Student, CourseOffering, Course, Teacher } from '../../types';
@@ -55,7 +56,7 @@ export const AdminEmailAndRiskManagement: React.FC<AdminEmailAndRiskManagementPr
 
   // Fetch SMTP status from backend /api/email/status
   useEffect(() => {
-    fetch('/api/email/status')
+    fetch(ApiClient.getUrl('/api/email/status'))
       .then(res => res.json())
       .then(data => setSmtpStatus(data))
       .catch(err => {
@@ -260,7 +261,7 @@ export const AdminEmailAndRiskManagement: React.FC<AdminEmailAndRiskManagementPr
     setIsVerifyingSmtp(true);
     setLiveTestResult(null);
     try {
-      const res = await fetch('/api/email/verify-smtp');
+      const res = await fetch(ApiClient.getUrl('/api/email/verify-smtp'));
       const data = await res.json();
       if (data.success) {
         setActionNotice({
@@ -286,7 +287,7 @@ export const AdminEmailAndRiskManagement: React.FC<AdminEmailAndRiskManagementPr
     setIsTestingDelivery(true);
     setLiveTestResult(null);
     try {
-      const res = await fetch('/api/email/test-warning-delivery', {
+      const res = await fetch(ApiClient.getUrl('/api/email/test-warning-delivery'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

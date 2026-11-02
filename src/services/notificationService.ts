@@ -6,6 +6,7 @@
 
 import { computeStudentCourseAnalytics } from './attendanceEngine';
 import { db } from './db';
+import { ApiClient } from './apiClient';
 import { Course, CourseOffering, EmailLog, RoutineEntry, Student, Teacher, StudentCourseAnalytics } from '../types';
 
 export interface EmailDispatchResult {
@@ -31,7 +32,7 @@ export class NotificationService {
     courseOfferingId?: string;
   }): Promise<EmailDispatchResult> {
     try {
-      const response = await fetch('/api/email/send', {
+      const response = await fetch(ApiClient.getUrl('/api/email/send'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -544,7 +545,7 @@ Mawlana Bhashani Science and Technology University (MBSTU)`;
     }
 
     try {
-      const response = await fetch('/api/email/retry', {
+      const response = await fetch(ApiClient.getUrl('/api/email/retry'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ logId: emailLogId }),

@@ -4,7 +4,11 @@
  */
 import { auth } from './firebase';
 
-const FASTAPI_BASE_URL = (import.meta.env.VITE_FASTAPI_URL || '').replace(/\/$/, '');
+const API_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_FASTAPI_URL ||
+  ''
+).replace(/\/$/, '');
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
@@ -22,9 +26,13 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 }
 
 export class ApiClient {
-  private static getUrl(path: string): string {
+  public static getBaseUrl(): string {
+    return API_BASE_URL;
+  }
+
+  public static getUrl(path: string): string {
     const cleanPath = path.startsWith('/') ? path : `/${path}`;
-    return `${FASTAPI_BASE_URL}${cleanPath}`;
+    return `${API_BASE_URL}${cleanPath}`;
   }
 
   // Generic request handler
@@ -185,6 +193,30 @@ export class ApiClient {
 
   public static async verifySmtp() {
     return this.request('/api/email/verify-smtp');
+  }
+
+  public static async retryEmail(logId: string) {
+    return this.request('/api/email/retry', {
+      method: 'POST',
+      body: JSON.stringify({ logId }),
+    });
+  }
+
+  public static async testWarningDelivery(data: {
+    to: string;
+    studentName?: string;
+    studentRoll?: string;
+    courseCode?: string;
+    courseName?: string;
+  }) {
+    return this.request('/api/email/test-warning-delivery', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public static async getHealth() {
+    return this.request('/health');
   }
 
   // 6. Analytics & Projections
